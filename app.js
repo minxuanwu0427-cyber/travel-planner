@@ -592,9 +592,8 @@ function renderOverview(trip) {
     </div>`).join("");
 
   return `
-  <div style="display:flex;gap:var(--space-3);margin-bottom:var(--space-3);flex-wrap:wrap;align-items:flex-start" class="flex-row-wrap">
-    <div style="display:flex;flex-direction:column;gap:var(--space-3);flex:1;min-width:260px">
-      <div class="card card-bordered">
+  <div class="overview-grid">
+    <div class="card card-bordered" style="grid-area:flight">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <i data-lucide="plane" style="width:17px;height:17px;color:var(--color-accent)"></i>
           <div class="card-title" style="font-size:16px">航班資訊</div>
@@ -603,16 +602,15 @@ function renderOverview(trip) {
           <div style="display:flex;align-items:center;gap:6px">去程<input class="input input-plain" data-bind-blur="flightOut" value="${esc(trip.flight.out)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1" /></div>
           <div style="display:flex;align-items:center;gap:6px">回程<input class="input input-plain" data-bind-blur="flightBack" value="${esc(trip.flight.back)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1" /></div>
         </div>
-      </div>
-      <div class="card card-bordered">
+    </div>
+    <div class="card card-bordered" style="grid-area:route">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
           <i data-lucide="route" style="width:17px;height:17px;color:var(--color-accent)"></i>
           <div class="card-title" style="font-size:16px">旅行路線</div>
         </div>
         ${imageSlot("route-map-" + trip.id, "上傳旅行路線地圖照片", { style: "width:100%;height:200px", radius: 8, fit: "contain" })}
-      </div>
     </div>
-    <div class="card card-bordered" style="flex:1;min-width:260px">
+    <div class="card card-bordered" style="grid-area:stay">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <i data-lucide="bed" style="width:17px;height:17px;color:var(--color-accent)"></i>
         <div class="card-title" style="font-size:16px">住宿一覽</div>
@@ -625,7 +623,7 @@ function renderOverview(trip) {
 /* ---------------------------------------------------------------------- */
 /* Render — 行前準備（待辦 / 行李清單 共用）                                    */
 /* ---------------------------------------------------------------------- */
-function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelAction, reorderAction) {
+function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelAction, reorderAction, gridArea) {
   const canDrag = canEditGeneral();
   const groups = cats.map((cat, i) => {
     const key = section + ":" + cat;
@@ -653,7 +651,7 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
         ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}</div>` : ""}
       </div>`;
   }).join("");
-  return `<div class="card card-bordered">
+  return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
       <div class="card-title" style="font-size:16px;margin-bottom:6px">${esc(title)}</div>
       ${groups}
     </div>`;
@@ -662,17 +660,13 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
 function renderPrep(trip) {
   const canEdit = canEditGeneral();
   return `
-  <div style="display:flex;gap:var(--space-3);flex-wrap:wrap;align-items:flex-start" class="flex-row-wrap">
-    <div style="display:flex;flex-direction:column;gap:var(--space-3);flex:1;min-width:280px">
-      ${renderChecklistCard("待辦", PREP_CATS, "prep", trip.prep, "togglePrepCheck", "prepLabel", "reorderPrep")}
-      <div class="card card-bordered">
-        <div class="card-title" style="font-size:16px;margin-bottom:10px">注意事項</div>
-        <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="6" style="font-size:13px;line-height:1.85;min-height:140px" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
-      </div>
+  <div class="prep-grid">
+    ${renderChecklistCard("待辦", PREP_CATS, "prep", trip.prep, "togglePrepCheck", "prepLabel", "reorderPrep", "todo")}
+    <div class="card card-bordered" style="grid-area:notes">
+      <div class="card-title" style="font-size:16px;margin-bottom:10px">注意事項</div>
+      <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="6" style="font-size:13px;line-height:1.85;min-height:140px" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
     </div>
-    <div style="flex:1;min-width:280px">
-      ${renderChecklistCard("行李清單", PACKING_CATS, "packing", trip.packing, "togglePackingCheck", "packingLabel", "reorderPacking")}
-    </div>
+    ${renderChecklistCard("行李清單", PACKING_CATS, "packing", trip.packing, "togglePackingCheck", "packingLabel", "reorderPacking", "packing")}
   </div>`;
 }
 
