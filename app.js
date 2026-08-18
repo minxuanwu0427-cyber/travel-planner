@@ -51,6 +51,14 @@ function esc(str) {
   return String(str == null ? "" : str).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 function fmtMoney(n) { return Math.round(n || 0).toLocaleString(); }
+/* 估算 textarea 需要幾行才能一次顯示完全部文字（含換行與自動換行），避免還要滑動才看得到全文 */
+function estimateTextareaRows(text, minRows, charsPerLine) {
+  const perLine = charsPerLine || 22;
+  const lines = (text || "").split("\n");
+  let total = 0;
+  for (const line of lines) total += Math.max(1, Math.ceil(line.length / perLine));
+  return Math.max(minRows || 3, total);
+}
 function parseGoogleMapsLocation(raw) {
   const val = (raw || "").trim();
   const isMapsUrl = /^https?:\/\/(www\.)?(google\.[a-z.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(val);
@@ -224,11 +232,12 @@ function defaultState() {
       editingItemId: null,
       formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
       budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [],
-      memoFormTag: "", memoFormName: "", memoFormPrice: "", memoFormCurrency: "TWD",
+      memoFormTag: "", memoFormName: "", memoFormPrice: "", memoFormCurrency: "TWD", memoFormId: null,
       newGuestName: "",
       isEditingTripName: false, tripNameDraft: "",
       collabMenuOpen: false,
       expandedItemIds: [],
+      lightboxSrc: null,
       expandedGroups: {},
       draggingItemId: null
     }
@@ -520,10 +529,23 @@ const actions = {
     render(true);
   },
   closeModal() {
+    // 如果是「新增備忘項目」時上傳了照片但取消，順便清掉沒用到的孤兒照片
+    if (state.ui.memoModalOpen && state.ui.memoFormId) {
+      const trip = findTrip();
+      const exists = trip.memoItems.some(m => m.id === state.ui.memoFormId);
+      if (!exists) delete state.images["memo-photo-" + state.ui.memoFormId];
+    }
     state.ui.itemModalOpen = false; state.ui.budgetModalOpen = false; state.ui.memoModalOpen = false; state.ui.shareModalOpen = false;
-    state.ui.editingBudgetId = null; state.ui.editingMemoId = null;
+    state.ui.editingBudgetId = null; state.ui.editingMemoId = null; state.ui.memoFormId = null;
     render(true);
   },
+  openLightbox(slotId) {
+    const src = state.images[slotId];
+    if (!src) return;
+    state.ui.lightboxSrc = src;
+    render(true);
+  },
+  closeLightbox() { state.ui.lightboxSrc = null; render(true); },
   saveItem(isBackup) {
     const u = state.ui;
     if (!u.formTitle.trim()) { u.itemModalOpen = false; render(true); return; }
@@ -579,28 +601,31 @@ const actions = {
 
   openAddMemo() {
     const trip = findTrip();
-    state.ui.memoModalOpen = true; state.ui.editingMemoId = null;
+    state.ui.memoModalOpen = true; state.ui.editingMemoId = null; state.ui.memoFormId = uid("m");
     state.ui.memoFormTag = trip.memoTags[0] || ""; state.ui.memoFormName = ""; state.ui.memoFormPrice = ""; state.ui.memoFormCurrency = "TWD";
     render(true);
   },
   openEditMemo(item) {
     if (item.ownerId !== state.currentUserId) return;
-    state.ui.memoModalOpen = true; state.ui.editingMemoId = item.id;
+    state.ui.memoModalOpen = true; state.ui.editingMemoId = item.id; state.ui.memoFormId = item.id;
     state.ui.memoFormTag = item.tag; state.ui.memoFormName = item.name; state.ui.memoFormPrice = String(item.price); state.ui.memoFormCurrency = item.currency || "TWD";
     render(true);
   },
   saveMemo() {
     const u = state.ui;
-    if (!u.memoFormName.trim()) { u.memoModalOpen = false; u.editingMemoId = null; render(true); return; }
+    if (!u.memoFormName.trim()) {
+      if (!u.editingMemoId && u.memoFormId) delete state.images["memo-photo-" + u.memoFormId];
+      u.memoModalOpen = false; u.editingMemoId = null; u.memoFormId = null; render(true); return;
+    }
     if (u.editingMemoId) {
       const editId = u.editingMemoId;
       mutateTrip(t => ({ ...t, memoItems: t.memoItems.map(m => m.id !== editId || m.ownerId !== state.currentUserId ? m : {
         ...m, tag: u.memoFormTag, name: u.memoFormName, price: Number(u.memoFormPrice) || 0, currency: u.memoFormCurrency || "TWD"
       }) }));
     } else {
-      mutateTrip(t => ({ ...t, memoItems: [...t.memoItems, { id: uid("m"), tag: u.memoFormTag, ownerId: state.currentUserId, name: u.memoFormName, price: Number(u.memoFormPrice) || 0, currency: u.memoFormCurrency || "TWD", hasPhoto: false }] }));
+      mutateTrip(t => ({ ...t, memoItems: [...t.memoItems, { id: u.memoFormId || uid("m"), tag: u.memoFormTag, ownerId: state.currentUserId, name: u.memoFormName, price: Number(u.memoFormPrice) || 0, currency: u.memoFormCurrency || "TWD", hasPhoto: false }] }));
     }
-    u.memoModalOpen = false; u.editingMemoId = null;
+    u.memoModalOpen = false; u.editingMemoId = null; u.memoFormId = null;
     render();
   },
 
@@ -863,7 +888,7 @@ function renderPrep(trip) {
     ${renderChecklistCard("待辦", PREP_CATS, "prep", trip.prep, "togglePrepCheck", "prepLabel", "reorderPrep", "todo")}
     <div class="card card-bordered" style="grid-area:notes">
       <div class="card-title" style="font-size:16px;margin-bottom:10px">注意事項</div>
-      <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="6" style="font-size:13px;line-height:1.85;min-height:140px" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
+      <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(trip.notes, 6)}" style="font-size:13px;line-height:1.85;height:auto" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
     </div>
     ${renderChecklistCard("行李清單", PACKING_CATS, "packing", trip.packing, "togglePackingCheck", "packingLabel", "reorderPacking", "packing")}
   </div>`;
@@ -1041,7 +1066,7 @@ function renderBudget(trip) {
 
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);flex-wrap:wrap;gap:8px">
-      <div style="font-size:14px;opacity:.7">團體總花費</div>
+      <div style="font-size:14px;opacity:.7">此次行程預算</div>
       ${canManage ? `<div class="btn btn-accent-outline" data-act="openAddBudget"><i data-lucide="plus" style="width:15px;height:15px"></i> 新增花費</div>` : ""}
     </div>
     <div class="card elev-md" style="padding:var(--space-4);margin-bottom:var(--space-4);flex-direction:row;align-items:center;justify-content:space-between;gap:8px">
@@ -1073,12 +1098,16 @@ function renderMemo(trip) {
     const tagClass = MEMO_TAG_CLASSES[tagIdx % MEMO_TAG_CLASSES.length] || "tag-neutral";
     const cur = m.currency || "TWD";
     const convertedText = convertedTextForItem({ amount: m.price, currency: cur }, trip);
+    const photoSrc = state.images["memo-photo-" + m.id];
+    const photoDisplay = photoSrc
+      ? `<div data-act="openLightbox" data-slot="memo-photo-${m.id}" title="點擊看原圖" style="width:100%;height:110px;border-radius:6px;overflow:hidden;cursor:zoom-in;background:var(--color-neutral-200)"><img src="${photoSrc}" alt="" style="width:100%;height:100%;object-fit:cover;display:block"></div>`
+      : `<div style="width:100%;height:110px;border-radius:6px;background:var(--color-neutral-200);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--color-neutral-500);font-size:12px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg><span>尚無照片</span></div>`;
     return `<div class="card card-bordered" style="padding:var(--space-3);gap:8px">
         <div style="display:flex;justify-content:flex-end;gap:2px;margin-bottom:-6px">
             <div data-act="reorderMemo" data-dir="up" data-id="${m.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25}"><i data-lucide="chevron-up" style="width:13px;height:13px"></i></div>
             <div data-act="reorderMemo" data-dir="down" data-id="${m.id}" style="cursor:pointer;opacity:${i < visible.length - 1 ? 1 : 0.25}"><i data-lucide="chevron-down" style="width:13px;height:13px"></i></div>
           </div>
-        ${imageSlot("memo-photo-" + m.id, "商品照片", { style: "width:100%;height:110px", radius: 6 })}
+        ${photoDisplay}
         <div class="tag ${tagClass}" style="align-self:flex-start">${esc(m.tag)}</div>
         <div style="font-size:14px;font-weight:700;font-family:var(--font-heading)">${esc(m.name)}</div>
         <div>
@@ -1093,7 +1122,7 @@ function renderMemo(trip) {
   }).join("");
 
   return `
-    <div style="font-size:12.5px;opacity:.6;margin-bottom:var(--space-3)">這是你的個人清單，只有你看得到（其他旅伴看不到你的項目，你也看不到他們的）</div>
+    <div style="font-size:12.5px;opacity:.6;margin-bottom:var(--space-3);line-height:1.6">這是你的個人清單，只有你看得到<br />（其他旅伴看不到你的項目，你也看不到他們的）</div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);flex-wrap:wrap;gap:10px">
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${filtersHtml}
@@ -1179,6 +1208,7 @@ function renderModals(trip) {
     <div class="dialog-backdrop" data-act="closeModal">
       <div class="dialog" data-stop-click>
         <div class="dialog-title">${isEditing ? "編輯備忘項目" : "新增備忘項目"}</div>
+        <div class="field"><label>商品照片</label>${imageSlot("memo-photo-" + u.memoFormId, "上傳商品照片", { style: "width:100%;height:130px", radius: 8 })}</div>
         <div class="field"><label>分類</label><select class="input" id="mf-tag">${opts}</select></div>
         <div class="field"><label>品項名稱</label><input class="input" id="mf-name" value="${esc(u.memoFormName)}" placeholder="例：面膜" /></div>
         <div style="display:flex;gap:10px">
@@ -1226,6 +1256,13 @@ function renderModals(trip) {
       </div>
     </div>`;
   }
+  if (state.ui.lightboxSrc) {
+    html += `
+    <div class="dialog-backdrop" data-act="closeLightbox" style="z-index:200;background:color-mix(in srgb, black 82%, transparent);padding:var(--space-4)">
+      <img src="${state.ui.lightboxSrc}" style="max-width:92vw;max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:var(--shadow-lg)" />
+      <div class="btn btn-icon" data-act="closeLightbox" style="position:fixed;top:20px;right:20px;background:color-mix(in srgb, black 45%, transparent);color:#fff;width:40px;height:40px;border-radius:50%"><i data-lucide="x" style="width:20px;height:20px"></i></div>
+    </div>`;
+  }
   return html;
 }
 
@@ -1263,6 +1300,15 @@ function refreshIcons() {
 /* ---------------------------------------------------------------------- */
 function initEvents() {
   const root = document.getElementById("app");
+
+  // textarea 隨輸入內容即時長高，不用內部捲動就能看到全文
+  root.addEventListener("input", e => {
+    const el = e.target;
+    if (el.tagName === "TEXTAREA") {
+      el.style.height = "auto";
+      el.style.height = el.scrollHeight + "px";
+    }
+  });
 
   // Click delegation
   root.addEventListener("click", e => {
@@ -1309,6 +1355,8 @@ function initEvents() {
       case "removeItem": actions.removeItem(id); break;
       case "toggleItemExpanded": actions.toggleItemExpanded(id); break;
       case "closeModal": actions.closeModal(); break;
+      case "openLightbox": actions.openLightbox(actEl.getAttribute("data-slot")); break;
+      case "closeLightbox": actions.closeLightbox(); break;
       case "saveItemForm": {
         const isBackup = actEl.getAttribute("data-backup") === "1";
         state.ui.formTime = document.getElementById("f-time").value;
