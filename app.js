@@ -288,6 +288,18 @@ const actions = {
   },
 
   toggleGroupCollapse(key) { state.ui.expandedGroups[key] = !state.ui.expandedGroups[key]; render(true); },
+  addChecklistItem(section, cat) {
+    if (!canEditGeneral()) return;
+    const label = (window.prompt("新增項目名稱") || "").trim();
+    if (!label) return;
+    mutateTrip(t => ({ ...t, [section]: { ...t[section], [cat]: [...t[section][cat], { id: uid("c"), label, done: false }] } }));
+    render();
+  },
+  removeChecklistItem(section, cat, id) {
+    if (!canEditGeneral()) return;
+    mutateTrip(t => ({ ...t, [section]: { ...t[section], [cat]: t[section][cat].filter(c => c.id !== id) } }));
+    render();
+  },
   togglePrepCheck(cat, id) {
     if (!canEditGeneral()) return;
     mutateTrip(t => ({ ...t, prep: { ...t.prep, [cat]: t.prep[cat].map(c => c.id === id ? { ...c, done: !c.done } : c) } }));
@@ -478,7 +490,7 @@ function imageSlot(id, placeholder, opts) {
         <div class="btn btn-icon" data-act="removeImage" data-slot="${id}" title="移除照片"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
       </div>`
     : "";
-  return `<div class="image-slot washed" data-act="${src ? '' : 'pickImage'}" data-slot="${id}" style="${shapeClass};${style}"${fitAttr}>${inner}${actionsHtml}</div>`;
+  return `<div class="image-slot ${src ? "" : "washed"}" data-act="${src ? '' : 'pickImage'}" data-slot="${id}" style="${shapeClass};${style}"${fitAttr}>${inner}${actionsHtml}</div>`;
 }
 
 function avatar(initial, color, size) {
@@ -641,6 +653,7 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
             ${c.done ? '<i data-lucide="check" style="width:8px;height:8px"></i>' : ""}
           </div>
           <input class="input input-plain" data-bind-blur="${labelAction}" data-cat="${cat}" data-id="${c.id}" value="${esc(c.label)}" ${canEditGeneral() ? "" : "readonly"} style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1" />
+          ${canEditGeneral() ? `<div class="btn btn-icon btn-ghost" data-act="removeChecklistItem" data-section="${section}" data-cat="${cat}" data-id="${c.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>` : ""}
         </div>`;
     }).join("");
     return `<div style="padding:8px 0;border-bottom:${i < cats.length - 1 ? "1px solid var(--color-divider)" : "none"}">
@@ -648,7 +661,10 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
           <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}</div>
           <i data-lucide="${expanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px;color:var(--color-accent-700)"></i>
         </div>
-        ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}</div>` : ""}
+        ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">
+          ${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}
+          ${canEditGeneral() ? `<div class="btn btn-ghost" data-act="addChecklistItem" data-section="${section}" data-cat="${cat}" style="font-size:12px;padding:4px 6px;justify-content:flex-start;margin-top:2px"><i data-lucide="plus" style="width:13px;height:13px"></i> 新增項目</div>` : ""}
+        </div>` : ""}
       </div>`;
   }).join("");
   return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
@@ -1014,6 +1030,8 @@ function initEvents() {
       case "openShareModal": actions.openShareModal(); break;
       case "startEditTripName": actions.startEditTripName(); break;
       case "toggleGroupCollapse": actions.toggleGroupCollapse(id); break;
+      case "addChecklistItem": actions.addChecklistItem(actEl.getAttribute("data-section"), actEl.getAttribute("data-cat")); break;
+      case "removeChecklistItem": actions.removeChecklistItem(actEl.getAttribute("data-section"), actEl.getAttribute("data-cat"), id); break;
       case "togglePrepCheck": actions.togglePrepCheck(actEl.getAttribute("data-cat"), id); break;
       case "togglePackingCheck": actions.togglePackingCheck(actEl.getAttribute("data-cat"), id); break;
       case "reorderPrep": reorderViaChevron("prep", actEl); break;
