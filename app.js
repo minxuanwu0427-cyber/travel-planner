@@ -55,9 +55,32 @@ function parseGoogleMapsLocation(raw) {
   const val = (raw || "").trim();
   const isMapsUrl = /^https?:\/\/(www\.)?(google\.[a-z.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(val);
   if (!isMapsUrl) return { name: val, url: "" };
-  const m = val.match(/\/maps\/place\/([^/@?]+)/);
-  const name = m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : "Google 地圖地點";
-  return { name, url: val };
+  // /maps/place/NAME/... 或 /maps/place/NAME
+  let m = val.match(/\/maps\/place\/([^/@?]+)/);
+  if (m) return { name: decodeURIComponent(m[1].replace(/\+/g, " ")), url: val };
+  // /maps?q=NAME 或 /maps/search/?api=1&query=NAME（排除純座標）
+  m = val.match(/[?&]q(?:uery)?=([^&]+)/);
+  if (m) {
+    const q = decodeURIComponent(m[1].replace(/\+/g, " "));
+    if (!/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(q)) return { name: q, url: val };
+  }
+  // 短網址（maps.app.goo.gl／goo.gl/maps）本地端無法解析出地標名稱，回傳 name:null 讓呼叫端嘗試線上解析或請使用者手動輸入
+  return { name: null, url: val };
+}
+/* 嘗試解析 Google 地圖短網址背後的實際地標名稱（僅在有網路時才會成功，失敗就靜靜放棄，不影響其他功能） */
+async function resolveGoogleMapsShortLink(url) {
+  try {
+    const res = await fetch("https://r.jina.ai/" + url);
+    if (!res.ok) return null;
+    const text = await res.text();
+    const titleMatch = text.match(/^Title:\s*(.+)$/m);
+    if (!titleMatch) return null;
+    let title = titleMatch[1].trim();
+    title = title.replace(/\s*[-·|]\s*Google\s*(地圖|Maps).*$/i, "").trim();
+    return title || null;
+  } catch (e) {
+    return null;
+  }
 }
 function reorderList(arr, fromId, toId) {
   const fromIdx = arr.findIndex(x => x.id === fromId);
@@ -866,13 +889,18 @@ function renderItinerary(trip, day) {
     const itemsHtml = grp.items.map(it => {
       const meta = CATEGORY_META[it.category] || CATEGORY_META["其他"];
       const isExpanded = state.ui.expandedItemIds.includes(it.id);
+      const locationDisplay = it.location
+        ? (it.locationUrl
+            ? `<a href="${esc(it.locationUrl)}" target="_blank" rel="noopener" style="font-size:12.5px;color:var(--color-accent-700);text-decoration:underline">${esc(it.location)}</a>`
+            : `<span style="font-size:12.5px;color:var(--color-text);opacity:.8">${esc(it.location)}</span>`)
+        : `<span style="font-size:12.5px;opacity:.4">尚未設定地點</span>`;
       const locationBlock = isExpanded ? `
         <div style="display:flex;align-items:center;gap:5px;margin-top:2px;margin-left:40px">
           <span style="font-size:12px">🗺️</span>
-          <input class="input input-plain" data-bind-blur="itemLocation" data-id="${it.id}" value="${esc(it.location)}" ${canEdit ? "" : "readonly"} placeholder="地點，或貼上 Google 地圖網址" style="font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;flex:1" />
+          ${locationDisplay}
           ${it.locationUrl ? `<a href="${esc(it.locationUrl)}" target="_blank" rel="noopener" title="在 Google 地圖開啟"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg></a>` : ""}
         </div>
-        <input class="input input-plain" data-bind-blur="itemNote" data-id="${it.id}" value="${esc(it.note)}" ${canEdit ? "" : "readonly"} placeholder="備註" style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px;width:calc(100% - 40px)" />
+        ${it.note ? `<div style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px">${esc(it.note)}</div>` : ""}
       ` : "";
       const thumbSize = canEdit ? 52 : 88;
       const thumb = imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24 });
@@ -890,7 +918,7 @@ function renderItinerary(trip, day) {
               <div style="width:32px;height:32px;border-radius:50%;background:${meta.tagBg};display:flex;align-items:center;justify-content:center;flex:none">
                 <i data-lucide="${meta.icon}" style="width:16px;height:16px;color:${meta.tagFg}"></i>
               </div>
-              <input class="input input-plain" data-bind-blur="itemTitle" data-id="${it.id}" value="${esc(it.title)}" ${canEdit ? "" : "readonly"} style="font-size:15.5px;font-weight:700;font-family:var(--font-body);flex:1;min-width:80px" />
+              <div style="font-size:15.5px;font-weight:700;font-family:var(--font-body);flex:1;min-width:80px">${esc(it.title)}</div>
             </div>
             ${locationBlock}
             <div data-act="toggleItemExpanded" data-id="${it.id}" style="cursor:pointer;display:flex;align-items:center;gap:3px;margin-left:40px;margin-top:6px;font-size:11.5px;color:var(--color-accent-700);opacity:.85">
@@ -1081,7 +1109,11 @@ function renderModals(trip) {
           <div class="field" style="flex:2"><label>類型</label><select class="input" id="f-category">${catOptions}</select></div>
         </div>
         <div class="field"><label>標題</label><input class="input" id="f-title" value="${esc(u.formTitle)}" placeholder="例：首里城參觀" /></div>
-        <div class="field"><label>地點</label><input class="input" id="f-location" value="${esc(u.formLocation)}" placeholder="例：那霸市，或貼上 Google 地圖網址自動取名" /></div>
+        <div class="field">
+          <label>地點</label>
+          <input class="input" id="f-location" value="${esc(u.formLocation)}" placeholder="例：那霸市，或貼上 Google 地圖網址自動取名" />
+          <div id="f-location-status" style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">${u.formLocationUrl ? "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟" : ""}</div>
+        </div>
         <div class="field"><label>備註</label><input class="input" id="f-note" value="${esc(u.formNote)}" placeholder="提醒事項、預算等" /></div>
         <div class="dialog-actions">
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
@@ -1267,8 +1299,16 @@ function initEvents() {
         state.ui.formTime = document.getElementById("f-time").value;
         state.ui.formCategory = document.getElementById("f-category").value;
         state.ui.formTitle = document.getElementById("f-title").value;
-        const loc = parseGoogleMapsLocation(document.getElementById("f-location").value);
-        state.ui.formLocation = loc.name; state.ui.formLocationUrl = loc.url;
+        const locEl = document.getElementById("f-location");
+        const rawLoc = locEl.value.trim();
+        if (rawLoc !== state.ui.formLocation) {
+          // 使用者沒有先離開地點欄位觸發自動解析（例如打完直接按儲存）—— 這裡做最後一次同步解析，
+          // 純文字修改則保留原本已經連結好的地圖網址，不會被清空
+          const parsed = parseGoogleMapsLocation(rawLoc);
+          if (parsed.url && parsed.name) { state.ui.formLocation = parsed.name; state.ui.formLocationUrl = parsed.url; }
+          else if (parsed.url && !parsed.name) { state.ui.formLocation = ""; state.ui.formLocationUrl = parsed.url; }
+          else { state.ui.formLocation = rawLoc; }
+        }
         state.ui.formNote = document.getElementById("f-note").value;
         actions.saveItem(isBackup);
         break;
@@ -1425,9 +1465,51 @@ function startItemDrag(itemId, e) {
 }
 
 /* field commit map: data-bind-blur attribute -> handler */
+/* 行程 modal 的「地點」欄位：貼上 Google 地圖網址時嘗試自動取地標名稱，短網址則盡力線上解析 */
+async function handleLocationFieldBlur(el) {
+  const raw = el.value.trim();
+  const statusEl = document.getElementById("f-location-status");
+  if (!raw) {
+    state.ui.formLocation = ""; state.ui.formLocationUrl = "";
+    if (statusEl) statusEl.textContent = "";
+    return;
+  }
+  const parsed = parseGoogleMapsLocation(raw);
+  if (parsed.url && parsed.name) {
+    // 完整網址，本地端就能直接解析出地標名稱
+    el.value = parsed.name;
+    state.ui.formLocation = parsed.name;
+    state.ui.formLocationUrl = parsed.url;
+    if (statusEl) statusEl.textContent = "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟";
+    return;
+  }
+  if (parsed.url && !parsed.name) {
+    // 短網址：本地端看不出地標名稱，嘗試連線解析（需要網路，可能失敗）
+    state.ui.formLocationUrl = parsed.url;
+    if (statusEl) statusEl.textContent = "正在解析地點名稱…";
+    const resolved = await resolveGoogleMapsShortLink(parsed.url);
+    if (!state.ui.itemModalOpen) return; // 解析回來前使用者可能已經關掉視窗
+    const elNow = document.getElementById("f-location");
+    const statusNow = document.getElementById("f-location-status");
+    if (resolved) {
+      if (elNow) elNow.value = resolved;
+      state.ui.formLocation = resolved;
+      if (statusNow) statusNow.textContent = "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟";
+    } else {
+      if (elNow) elNow.value = "";
+      state.ui.formLocation = "";
+      if (statusNow) statusNow.textContent = "無法自動取得地點名稱，請手動輸入（地圖連結已保留，儲存後仍可點擊開啟）";
+    }
+    return;
+  }
+  // 純文字，不是網址
+  state.ui.formLocation = raw;
+  if (statusEl) statusEl.textContent = state.ui.formLocationUrl ? "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟" : "";
+}
 function handleFieldCommit(e) {
   const el = e.target;
   if (!el.matches) return;
+  if (el.id === "f-location") { handleLocationFieldBlur(el); return; }
   if (!el.matches("[data-bind-blur]")) return;
   const field = el.getAttribute("data-bind-blur");
   const id = el.getAttribute("data-id");
@@ -1442,9 +1524,6 @@ function handleFieldCommit(e) {
     case "prepLabel": actions.setPrepLabel(el.getAttribute("data-cat"), id, val); break;
     case "packingLabel": actions.setPackingLabel(el.getAttribute("data-cat"), id, val); break;
     case "dayTitle": actions.setDayTitle(state.activeDayId, val); break;
-    case "itemTitle": actions.setItemField(id, "title", val); break;
-    case "itemLocation": actions.setItemLocation(id, val); break;
-    case "itemNote": actions.setItemField(id, "note", val); break;
     case "budgetLabel": actions.setBudgetLabel(id, val); break;
     case "budgetAmount": actions.setBudgetAmount(id, val); break;
     case "memoName": actions.setMemoName(id, el.getAttribute("data-owner"), val); break;
