@@ -133,10 +133,11 @@ function initialData() {
         "其他": [{ id: "o1", label: "租車預約確認", done: false }, { id: "o2", label: "Wi-Fi 機預訂", done: true }]
       },
       budget: [
-        { id: "b1", category: "票券", label: "美麗海水族館門票", amount: 1900, payerId: "p1" },
-        { id: "b2", category: "交通", label: "單軌電車一日券", amount: 800, payerId: "p1" },
-        { id: "b3", category: "住宿", label: "月光海景飯店 4 晚", amount: 16000, payerId: "p2" },
-        { id: "b4", category: "其他", label: "網路吃到飽", amount: 500, payerId: "p1" }
+        { id: "b1", category: "票券", label: "美麗海水族館門票", amount: 1900, currency: "TWD", payerIds: ["p1", "p2"] },
+        { id: "b2", category: "交通", label: "單軌電車一日券", amount: 800, currency: "TWD", payerIds: ["p1", "p2"] },
+        { id: "b3", category: "住宿", label: "月光海景飯店 4 晚", amount: 16000, currency: "TWD", payerIds: ["p1", "p2", "p3"] },
+        { id: "b4", category: "其他", label: "網路吃到飽", amount: 500, currency: "TWD", payerIds: ["p1"] },
+        { id: "b7", category: "其他", label: "沖繩麵晚餐（現場付現）", amount: 1200, currency: "JPY", payerIds: ["p1", "p2"] }
       ],
       memoTags: ["藥妝店", "百貨公司"],
       memoItems: [
@@ -170,8 +171,8 @@ function initialData() {
         "其他": [{ id: "o3", label: "K-ETA 申請", done: true }]
       },
       budget: [
-        { id: "b5", category: "交通", label: "機場快線", amount: 900, payerId: "p1" },
-        { id: "b6", category: "住宿", label: "海雲台海景公寓 5 晚", amount: 12000, payerId: "p1" }
+        { id: "b5", category: "交通", label: "機場快線", amount: 900, currency: "TWD", payerIds: ["p1"] },
+        { id: "b6", category: "住宿", label: "海雲台海景公寓 5 晚", amount: 12000, currency: "TWD", payerIds: ["p1"] }
       ],
       memoTags: ["藥妝店"],
       memoItems: [{ id: "m3", tag: "藥妝店", ownerId: "p3", name: "雪花秀面膜", price: 1200, hasPhoto: false }]
@@ -199,7 +200,7 @@ function defaultState() {
       itemModalOpen: false, budgetModalOpen: false, memoModalOpen: false, shareModalOpen: false, identityModalOpen: false,
       editingItemId: null,
       formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
-      budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormPayerId: "",
+      budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [],
       memoFormTag: "", memoFormName: "", memoFormPrice: "",
       newGuestName: "",
       isEditingTripName: false, tripNameDraft: "",
@@ -216,6 +217,23 @@ function defaultState() {
 /* ---------------------------------------------------------------------- */
 let state = loadState();
 
+function migrateState(s) {
+  // 舊資料可能沒有「主編輯者」欄位 —— 沒有的話補上，避免所有人都失去新增/刪除權限
+  if (!s.collaborators.some(p => p.isPrimaryEditor)) {
+    if (s.collaborators[0]) s.collaborators[0].isPrimaryEditor = true;
+  }
+  // 舊的預算項目可能沒有 currency / payerIds（改版前用的是單一 payerId）—— 補齊避免顯示壞掉
+  s.trips = s.trips.map(t => ({
+    ...t,
+    budget: (t.budget || []).map(b => {
+      const currency = b.currency || "TWD";
+      const payerIds = b.payerIds || (b.payerId ? [b.payerId] : s.collaborators.map(p => p.id));
+      return { ...b, currency, payerIds };
+    })
+  }));
+  return s;
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -223,10 +241,10 @@ function loadState() {
       const parsed = JSON.parse(raw);
       const d = defaultState();
       // merge saved data with defaults (keeps forward-compat with new fields)
-      return Object.assign(d, parsed, { ui: d.ui });
+      return migrateState(Object.assign(d, parsed, { ui: d.ui }));
     }
   } catch (e) { /* ignore corrupt storage */ }
-  return defaultState();
+  return migrateState(defaultState());
 }
 function persist() {
   try {
@@ -271,6 +289,26 @@ function convertToLocal(amountTWD, trip) {
   if (!cur || !state.fx || !state.fx.rates || state.fx.rates[cur.code] == null) return null;
   const converted = amountTWD * state.fx.rates[cur.code];
   return `≈ ${cur.symbol}${Math.round(converted).toLocaleString()}`;
+}
+const CURRENCY_META = {
+  TWD: { symbol: "NT$", label: "NT$ 台幣" },
+  JPY: { symbol: "¥", label: "¥ 日圓" },
+  KRW: { symbol: "₩", label: "₩ 韓元" }
+};
+function currencySymbol(code) { return (CURRENCY_META[code] || CURRENCY_META.TWD).symbol; }
+/* 把任何幣別金額換算成台幣（用來加總，避免不同幣別的金額被直接相加） */
+function toTWD(amount, currency) {
+  if (!currency || currency === "TWD") return amount;
+  if (!state.fx || !state.fx.rates || !state.fx.rates[currency]) return null;
+  return amount / state.fx.rates[currency]; // rates[currency] = 該幣別 per 1 TWD
+}
+/* 顯示某筆花費換算成「另一種幣別」的灰色小字：TWD 項目換算成當地貨幣；當地貨幣項目換算回台幣 */
+function convertedTextForItem(item, trip) {
+  const cur = item.currency || "TWD";
+  if (cur === "TWD") return convertToLocal(item.amount, trip);
+  const twd = toTWD(item.amount, cur);
+  if (twd == null) return null;
+  return `≈ NT$${fmtMoney(twd)}`;
 }
 
 function findTrip() { return state.trips.find(t => t.id === state.activeTripId); }
@@ -413,17 +451,16 @@ const actions = {
 
   setBudgetLabel(id, val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, budget: t.budget.map(b => b.id === id ? { ...b, label: val } : b) })); render(true); },
   setBudgetAmount(id, val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, budget: t.budget.map(b => b.id === id ? { ...b, amount: Number(val) || 0 } : b) })); render(); },
+  setBudgetCurrency(id, val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, budget: t.budget.map(b => b.id === id ? { ...b, currency: val } : b) })); render(); },
   reorderBudget(category, fromId, toId) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, budget: reorderWithinGroup(t.budget, "category", category, fromId, toId) })); render(); },
   removeBudget(id) { if (!isPrimaryEditor()) return; mutateTrip(t => ({ ...t, budget: t.budget.filter(b => b.id !== id) })); render(); },
-  cycleBudgetPayer(id) {
+  toggleBudgetPayer(itemId, personId) {
     if (!canEditGeneral()) return;
-    const ids = state.collaborators.map(p => p.id);
-    if (ids.length === 0) return;
     mutateTrip(t => ({ ...t, budget: t.budget.map(b => {
-      if (b.id !== id) return b;
-      const idx = ids.indexOf(b.payerId);
-      const nextId = ids[(idx + 1) % ids.length];
-      return { ...b, payerId: nextId };
+      if (b.id !== itemId) return b;
+      const set = new Set(b.payerIds || []);
+      if (set.has(personId)) set.delete(personId); else set.add(personId);
+      return { ...b, payerIds: Array.from(set) };
     }) }));
     render();
   },
@@ -481,14 +518,18 @@ const actions = {
 
   openAddBudget() {
     if (!isPrimaryEditor()) return;
-    state.ui.budgetModalOpen = true; state.ui.budgetFormCategory = "票券"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = ""; state.ui.budgetFormPayerId = state.currentUserId;
+    state.ui.budgetModalOpen = true; state.ui.budgetFormCategory = "票券"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = "";
+    state.ui.budgetFormCurrency = "TWD"; state.ui.budgetFormPayerIds = state.collaborators.map(p => p.id);
     render(true);
   },
   saveBudget() {
     if (!isPrimaryEditor()) { state.ui.budgetModalOpen = false; render(true); return; }
     const u = state.ui;
     if (!u.budgetFormLabel.trim()) { u.budgetModalOpen = false; render(true); return; }
-    mutateTrip(t => ({ ...t, budget: [...t.budget, { id: uid("b"), category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0, payerId: u.budgetFormPayerId || state.currentUserId }] }));
+    mutateTrip(t => ({ ...t, budget: [...t.budget, {
+      id: uid("b"), category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0,
+      currency: u.budgetFormCurrency || "TWD", payerIds: u.budgetFormPayerIds && u.budgetFormPayerIds.length ? u.budgetFormPayerIds : [state.currentUserId]
+    }] }));
     u.budgetModalOpen = false;
     render();
   },
@@ -881,38 +922,52 @@ function renderBudget(trip) {
   const canEdit = canEditGeneral();
   const canManage = isPrimaryEditor();
   ensureFxRates();
-  const total = trip.budget.reduce((sum, b) => sum + b.amount, 0);
-  const totalLocal = convertToLocal(total, trip);
+
+  // 合計：只加總「我」是付款旅伴之一的項目（換算成台幣後加總，避免不同幣別直接相加）
+  const myTotalTWD = trip.budget.reduce((sum, b) => {
+    if (!(b.payerIds || []).includes(state.currentUserId)) return sum;
+    const twd = toTWD(b.amount, b.currency || "TWD");
+    return sum + (twd || 0);
+  }, 0);
+  const myTotalLocal = convertToLocal(myTotalTWD, trip);
+
   const groupsHtml = BUDGET_CATS.map(cat => {
     const items = trip.budget.filter(b => b.category === cat);
-    const subtotal = items.reduce((sum, b) => sum + b.amount, 0);
+    // 小計：該分類「所有」項目換算成台幣後加總（不論是誰付款），用來呈現分類花費規模
+    const subtotalTWD = items.reduce((sum, b) => sum + (toTWD(b.amount, b.currency || "TWD") || 0), 0);
     const rows = items.map((b, i) => {
-      const payer = state.collaborators.find(p => p.id === b.payerId);
-      const payerColor = payer ? PEOPLE_COLORS[payer.colorIdx % PEOPLE_COLORS.length] : "var(--color-neutral-500)";
-      const localAmt = convertToLocal(b.amount, trip);
+      const cur = b.currency || "TWD";
+      const convertedText = convertedTextForItem(b, trip);
+      const payerRow = state.collaborators.map(p => {
+        const active = (b.payerIds || []).includes(p.id);
+        const color = PEOPLE_COLORS[p.colorIdx % PEOPLE_COLORS.length];
+        return `<div data-act="${canEdit ? "toggleBudgetPayer" : ""}" data-id="${b.id}" data-person="${p.id}" title="${esc(p.name)}${active ? "（需付款）" : ""}" style="cursor:${canEdit ? "pointer" : "default"};width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex:none;color:${active ? "#fff" : "var(--color-neutral-400)"};background:${active ? color : "transparent"};border:1.5px solid ${active ? color : "var(--color-divider)"}">${esc(p.initial)}</div>`;
+      }).join("");
       return `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px;font-size:13px;gap:8px">
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          ${canEdit ? `<div style="display:flex;flex-direction:column;flex:none">
-            <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
-            <div data-act="reorderBudget" data-cat="${cat}" data-dir="down" data-id="${b.id}" style="cursor:pointer;opacity:${i < items.length - 1 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></div>
-          </div>` : ""}
-          <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
-          ${payer ? `<div data-act="${canEdit ? 'cycleBudgetPayer' : ''}" data-id="${b.id}" title="付款人：${esc(payer.name)}（${canEdit ? '點擊更換' : '僅檢視'}）" style="cursor:${canEdit ? "pointer" : "default"};flex:none">${avatar(payer.initial, payerColor, 20)}</div>` : ""}
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex:none">
-          <div style="text-align:right">
-            <div style="opacity:.75;display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700">NT$ <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${canEdit ? "" : "readonly"} style="font-size:13px;width:70px;font-family:var(--font-body);font-weight:700" /></div>
-            ${localAmt ? `<div style="font-size:11px;color:var(--color-neutral-500);text-align:right;padding-right:2px">${localAmt}</div>` : ""}
+      <div style="padding:6px 2px;font-size:13px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+            ${canEdit ? `<div style="display:flex;flex-direction:column;flex:none">
+              <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
+              <div data-act="reorderBudget" data-cat="${cat}" data-dir="down" data-id="${b.id}" style="cursor:pointer;opacity:${i < items.length - 1 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></div>
+            </div>` : ""}
+            <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
           </div>
-          ${canManage ? `<div class="btn btn-icon btn-ghost" data-act="removeBudget" data-id="${b.id}"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
+          ${canManage ? `<div class="btn btn-icon btn-ghost" data-act="removeBudget" data-id="${b.id}" style="flex:none"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding-left:${canEdit ? "18px" : "0"}">
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${payerRow}</div>
+          <div style="display:flex;align-items:baseline;gap:6px;flex:none">
+            <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${canEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />/人</div>
+            ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">${convertedText}</div>` : ""}
+          </div>
         </div>
       </div>`;
     }).join("");
     return `<div class="card card-bordered">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div class="card-title" style="font-size:11.5px;letter-spacing:.08em">${esc(cat)}</div>
-          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(subtotal)}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(subtotalTWD)}</div>
         </div>
         ${rows || '<div style="font-size:12.5px;opacity:.5;padding:4px 2px">尚無花費</div>'}
       </div>`;
@@ -920,18 +975,21 @@ function renderBudget(trip) {
 
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);flex-wrap:wrap;gap:8px">
-      <div style="font-size:14px;opacity:.7">團體總花費（含所有旅伴新增）</div>
+      <div style="font-size:14px;opacity:.7">團體總花費</div>
       ${canManage ? `<div class="btn btn-accent-outline" data-act="openAddBudget"><i data-lucide="plus" style="width:15px;height:15px"></i> 新增花費</div>` : ""}
     </div>
-    <div class="card elev-md" style="padding:var(--space-4);margin-bottom:var(--space-4);flex-direction:row;align-items:center;justify-content:space-between">
-      <div class="card-title" style="font-size:16px">合計</div>
-      <div style="text-align:right">
-        <div style="font-size:26px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(total)}</div>
-        ${totalLocal ? `<div style="font-size:12px;color:var(--color-neutral-500)">${totalLocal}（今日匯率）</div>` : ""}
+    <div class="card elev-md" style="padding:var(--space-4);margin-bottom:var(--space-4);flex-direction:row;align-items:center;justify-content:space-between;gap:8px">
+      <div style="min-width:0">
+        <div class="card-title" style="font-size:16px">合計</div>
+        <div style="font-size:11px;color:var(--color-neutral-500);margin-top:2px">僅計入你需要付款的項目</div>
+      </div>
+      <div style="text-align:right;flex:none">
+        <div style="font-size:26px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(myTotalTWD)}</div>
+        ${myTotalLocal ? `<div style="font-size:12px;color:var(--color-neutral-500)">${myTotalLocal}（今日匯率）</div>` : ""}
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:var(--space-3)">${groupsHtml}</div>
-    ${totalLocal ? `<div style="text-align:center;margin-top:var(--space-4);font-size:11px;color:var(--color-neutral-400)">匯率資料來源：<a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" style="color:inherit">ExchangeRate-API</a></div>` : ""}`;
+    ${state.fx ? `<div style="text-align:center;margin-top:var(--space-4);font-size:11px;color:var(--color-neutral-400)">匯率資料來源：<a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" style="color:inherit">ExchangeRate-API</a></div>` : ""}`;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1002,15 +1060,25 @@ function renderModals(trip) {
   if (state.ui.budgetModalOpen) {
     const u = state.ui;
     const opts = BUDGET_CATS.map(c => `<option value="${c}" ${u.budgetFormCategory === c ? "selected" : ""}>${c}</option>`).join("");
-    const payerOpts = state.collaborators.map(p => `<option value="${p.id}" ${u.budgetFormPayerId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+    const localCur = localCurrencyForTrip(trip);
+    const currencyChoices = ["TWD"].concat(localCur ? [localCur.code] : []);
+    const currencyOpts = currencyChoices.map(c => `<option value="${c}" ${u.budgetFormCurrency === c ? "selected" : ""}>${esc((CURRENCY_META[c] || CURRENCY_META.TWD).label)}</option>`).join("");
+    const payerChecks = state.collaborators.map(p => `
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:4px 0;cursor:pointer">
+        <input type="checkbox" class="bf-payer-check" value="${p.id}" ${(u.budgetFormPayerIds || []).includes(p.id) ? "checked" : ""} />
+        ${esc(p.name)}
+      </label>`).join("");
     html += `
     <div class="dialog-backdrop" data-act="closeModal">
       <div class="dialog" data-stop-click>
         <div class="dialog-title">新增花費</div>
         <div class="field"><label>分類</label><select class="input" id="bf-category">${opts}</select></div>
         <div class="field"><label>項目名稱</label><input class="input" id="bf-label" value="${esc(u.budgetFormLabel)}" placeholder="例：飯店住宿費" /></div>
-        <div class="field"><label>金額 (NT$)</label><input class="input" id="bf-amount" type="number" value="${esc(u.budgetFormAmount)}" placeholder="0" /></div>
-        <div class="field"><label>由誰付款</label><select class="input" id="bf-payer">${payerOpts}</select></div>
+        <div style="display:flex;gap:10px">
+          <div class="field" style="flex:1"><label>金額（每人）</label><input class="input" id="bf-amount" type="number" value="${esc(u.budgetFormAmount)}" placeholder="0" /></div>
+          <div class="field" style="flex:1"><label>幣別</label><select class="input" id="bf-currency">${currencyOpts}</select></div>
+        </div>
+        <div class="field"><label>需要付款的旅伴</label>${payerChecks}</div>
         <div class="dialog-actions">
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
           <div class="btn btn-accent-outline" data-act="saveBudgetForm">新增</div>
@@ -1110,11 +1178,12 @@ function initEvents() {
 
   // Click delegation
   root.addEventListener("click", e => {
-    // dialog backdrop click-to-close, but not when clicking dialog itself
-    const stopEl = e.target.closest("[data-stop-click]");
-    if (stopEl) { /* clicks inside dialog shouldn't bubble to backdrop */ }
-
-    const actEl = e.target.closest("[data-act]");
+    // 點擊 dialog 內部但本身沒有 data-act 的元素（例如 checkbox、文字）時，
+    // closest("[data-act]") 會一路往上找到最外層 backdrop 的 data-act="closeModal"，
+    // 導致誤觸關閉視窗 —— 這裡擋掉這種「跨出 dialog 邊界」的誤判
+    const dialogEl = e.target.closest(".dialog");
+    let actEl = e.target.closest("[data-act]");
+    if (dialogEl && actEl && !dialogEl.contains(actEl)) actEl = null;
     if (!actEl) return;
     const act = actEl.getAttribute("data-act");
     if (!act) return;
@@ -1168,13 +1237,14 @@ function initEvents() {
         state.ui.budgetFormCategory = document.getElementById("bf-category").value;
         state.ui.budgetFormLabel = document.getElementById("bf-label").value;
         state.ui.budgetFormAmount = document.getElementById("bf-amount").value;
-        const payerEl = document.getElementById("bf-payer");
-        state.ui.budgetFormPayerId = payerEl ? payerEl.value : state.currentUserId;
+        const currencyEl = document.getElementById("bf-currency");
+        state.ui.budgetFormCurrency = currencyEl ? currencyEl.value : "TWD";
+        state.ui.budgetFormPayerIds = Array.from(document.querySelectorAll(".bf-payer-check:checked")).map(el => el.value);
         actions.saveBudget();
         break;
       }
       case "removeBudget": actions.removeBudget(id); break;
-      case "cycleBudgetPayer": actions.cycleBudgetPayer(id); break;
+      case "toggleBudgetPayer": actions.toggleBudgetPayer(id, actEl.getAttribute("data-person")); break;
       case "selectMemoTagFilter": actions.selectMemoTagFilter(id); break;
       case "addMemoTag": actions.addMemoTag(); break;
       case "openAddMemo": actions.openAddMemo(); break;
