@@ -30,6 +30,18 @@ const SECTION_TABS = [
 ];
 const STORAGE_KEY = "travel-planner-state-v1";
 const IDENTITY_KEY = "travel-planner-identity-map";
+const FX_STORAGE_KEY = "travel-planner-fx-rates-v1";
+/* 依國家對應目的地當地貨幣 */
+const LOCAL_CURRENCY_BY_TRIP = {
+  okinawa: { code: "JPY", symbol: "¥" },
+  busan: { code: "KRW", symbol: "₩" }
+};
+function localCurrencyForTrip(trip) {
+  if (LOCAL_CURRENCY_BY_TRIP[trip.id]) return LOCAL_CURRENCY_BY_TRIP[trip.id];
+  if (/日本/.test(trip.country)) return { code: "JPY", symbol: "¥" };
+  if (/韓/.test(trip.country)) return { code: "KRW", symbol: "₩" };
+  return null;
+}
 
 /* ---------------------------------------------------------------------- */
 /* 小工具                                                                  */
@@ -66,6 +78,17 @@ function reorderWithinGroup(arr, groupField, groupValue, fromId, toId) {
   newMatches.splice(toIdx, 0, item);
   let mi = 0;
   return arr.map(x => (groupValue == null || x[groupField] === groupValue) ? newMatches[mi++] : x);
+}
+function reorderWithinPredicate(arr, predicate, fromId, toId) {
+  const matches = arr.filter(predicate);
+  const fromIdx = matches.findIndex(x => x.id === fromId);
+  const toIdx = matches.findIndex(x => x.id === toId);
+  if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return arr;
+  const newMatches = [...matches];
+  const [item] = newMatches.splice(fromIdx, 1);
+  newMatches.splice(toIdx, 0, item);
+  let mi = 0;
+  return arr.map(x => predicate(x) ? newMatches[mi++] : x);
 }
 function getPath(obj, path) { return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj); }
 function setPath(obj, path, val) {
@@ -110,10 +133,10 @@ function initialData() {
         "其他": [{ id: "o1", label: "租車預約確認", done: false }, { id: "o2", label: "Wi-Fi 機預訂", done: true }]
       },
       budget: [
-        { id: "b1", category: "票券", label: "美麗海水族館門票", amount: 1900 },
-        { id: "b2", category: "交通", label: "單軌電車一日券", amount: 800 },
-        { id: "b3", category: "住宿", label: "月光海景飯店 4 晚", amount: 16000 },
-        { id: "b4", category: "其他", label: "網路吃到飽", amount: 500 }
+        { id: "b1", category: "票券", label: "美麗海水族館門票", amount: 1900, payerId: "p1" },
+        { id: "b2", category: "交通", label: "單軌電車一日券", amount: 800, payerId: "p1" },
+        { id: "b3", category: "住宿", label: "月光海景飯店 4 晚", amount: 16000, payerId: "p2" },
+        { id: "b4", category: "其他", label: "網路吃到飽", amount: 500, payerId: "p1" }
       ],
       memoTags: ["藥妝店", "百貨公司"],
       memoItems: [
@@ -147,8 +170,8 @@ function initialData() {
         "其他": [{ id: "o3", label: "K-ETA 申請", done: true }]
       },
       budget: [
-        { id: "b5", category: "交通", label: "機場快線", amount: 900 },
-        { id: "b6", category: "住宿", label: "海雲台海景公寓 5 晚", amount: 12000 }
+        { id: "b5", category: "交通", label: "機場快線", amount: 900, payerId: "p1" },
+        { id: "b6", category: "住宿", label: "海雲台海景公寓 5 晚", amount: 12000, payerId: "p1" }
       ],
       memoTags: ["藥妝店"],
       memoItems: [{ id: "m3", tag: "藥妝店", ownerId: "p3", name: "雪花秀面膜", price: 1200, hasPhoto: false }]
@@ -166,7 +189,7 @@ function defaultState() {
     memoTagFilter: "all",
     currentUserId: "p1",
     collaborators: [
-      { id: "p1", name: "小美", initial: "美", permission: "編輯", colorIdx: 0 },
+      { id: "p1", name: "小美", initial: "美", permission: "編輯", colorIdx: 0, isPrimaryEditor: true },
       { id: "p2", name: "阿傑", initial: "傑", permission: "編輯", colorIdx: 1 },
       { id: "p3", name: "Lin", initial: "L", permission: "檢視", colorIdx: 2 }
     ],
@@ -176,7 +199,7 @@ function defaultState() {
       itemModalOpen: false, budgetModalOpen: false, memoModalOpen: false, shareModalOpen: false, identityModalOpen: false,
       editingItemId: null,
       formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
-      budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "",
+      budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormPayerId: "",
       memoFormTag: "", memoFormName: "", memoFormPrice: "",
       newGuestName: "",
       isEditingTripName: false, tripNameDraft: "",
@@ -218,12 +241,48 @@ function saveIdentityMap(map) {
   try { localStorage.setItem(IDENTITY_KEY, JSON.stringify(map)); } catch (e) {}
 }
 
+/* 匯率快取（每天最多打一次 API，抓不到就靜靜不顯示換算） */
+let fxFetching = false;
+function loadFxCache() {
+  try { return JSON.parse(localStorage.getItem(FX_STORAGE_KEY) || "null"); } catch (e) { return null; }
+}
+function saveFxCache(data) {
+  try { localStorage.setItem(FX_STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+}
+state.fx = loadFxCache();
+function ensureFxRates() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (fxFetching || (state.fx && state.fx.date === today)) return;
+  fxFetching = true;
+  fetch("https://open.er-api.com/v6/latest/TWD")
+    .then(res => res.json())
+    .then(data => {
+      if (data && data.result === "success" && data.rates) {
+        state.fx = { rates: data.rates, date: today };
+        saveFxCache(state.fx);
+        render();
+      }
+    })
+    .catch(() => { /* 離線或被擋下就不顯示換算，不影響其他功能 */ })
+    .finally(() => { fxFetching = false; });
+}
+function convertToLocal(amountTWD, trip) {
+  const cur = localCurrencyForTrip(trip);
+  if (!cur || !state.fx || !state.fx.rates || state.fx.rates[cur.code] == null) return null;
+  const converted = amountTWD * state.fx.rates[cur.code];
+  return `≈ ${cur.symbol}${Math.round(converted).toLocaleString()}`;
+}
+
 function findTrip() { return state.trips.find(t => t.id === state.activeTripId); }
 function findDay() { const trip = findTrip(); return trip.days.find(d => d.id === state.activeDayId); }
 function mutateTrip(fn) { state.trips = state.trips.map(t => t.id === state.activeTripId ? fn(t) : t); }
 function canEditGeneral() {
   const p = state.collaborators.find(p => p.id === state.currentUserId);
   return !p || p.permission === "編輯";
+}
+function isPrimaryEditor() {
+  const p = state.collaborators.find(p => p.id === state.currentUserId);
+  return !!(p && p.isPrimaryEditor);
 }
 
 let rerenderScheduled = false;
@@ -355,11 +414,28 @@ const actions = {
   setBudgetLabel(id, val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, budget: t.budget.map(b => b.id === id ? { ...b, label: val } : b) })); render(true); },
   setBudgetAmount(id, val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, budget: t.budget.map(b => b.id === id ? { ...b, amount: Number(val) || 0 } : b) })); render(); },
   reorderBudget(category, fromId, toId) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, budget: reorderWithinGroup(t.budget, "category", category, fromId, toId) })); render(); },
-  removeBudget(id) { mutateTrip(t => ({ ...t, budget: t.budget.filter(b => b.id !== id) })); render(); },
+  removeBudget(id) { if (!isPrimaryEditor()) return; mutateTrip(t => ({ ...t, budget: t.budget.filter(b => b.id !== id) })); render(); },
+  cycleBudgetPayer(id) {
+    if (!canEditGeneral()) return;
+    const ids = state.collaborators.map(p => p.id);
+    if (ids.length === 0) return;
+    mutateTrip(t => ({ ...t, budget: t.budget.map(b => {
+      if (b.id !== id) return b;
+      const idx = ids.indexOf(b.payerId);
+      const nextId = ids[(idx + 1) % ids.length];
+      return { ...b, payerId: nextId };
+    }) }));
+    render();
+  },
 
   setMemoName(id, ownerId, val) { if (ownerId !== state.currentUserId) return; mutateTrip(t => ({ ...t, memoItems: t.memoItems.map(m => m.id === id ? { ...m, name: val } : m) })); render(true); },
   setMemoPrice(id, ownerId, val) { if (ownerId !== state.currentUserId) return; mutateTrip(t => ({ ...t, memoItems: t.memoItems.map(m => m.id === id ? { ...m, price: Number(val) || 0 } : m) })); render(); },
-  reorderMemo(fromId, toId) { const group = state.memoTagFilter === "all" ? null : state.memoTagFilter; mutateTrip(t => ({ ...t, memoItems: reorderWithinGroup(t.memoItems, "tag", group, fromId, toId) })); render(); },
+  reorderMemo(fromId, toId) {
+    const tagFilter = state.memoTagFilter;
+    const uidVal = state.currentUserId;
+    mutateTrip(t => ({ ...t, memoItems: reorderWithinPredicate(t.memoItems, m => m.ownerId === uidVal && (tagFilter === "all" || m.tag === tagFilter), fromId, toId) }));
+    render();
+  },
   removeMemo(id) { mutateTrip(t => ({ ...t, memoItems: t.memoItems.filter(m => m.id !== id) })); render(); },
   selectMemoTagFilter(tag) { state.memoTagFilter = tag; render(true); },
   addMemoTag() {
@@ -403,11 +479,16 @@ const actions = {
     render();
   },
 
-  openAddBudget() { state.ui.budgetModalOpen = true; state.ui.budgetFormCategory = "票券"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = ""; render(true); },
+  openAddBudget() {
+    if (!isPrimaryEditor()) return;
+    state.ui.budgetModalOpen = true; state.ui.budgetFormCategory = "票券"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = ""; state.ui.budgetFormPayerId = state.currentUserId;
+    render(true);
+  },
   saveBudget() {
+    if (!isPrimaryEditor()) { state.ui.budgetModalOpen = false; render(true); return; }
     const u = state.ui;
     if (!u.budgetFormLabel.trim()) { u.budgetModalOpen = false; render(true); return; }
-    mutateTrip(t => ({ ...t, budget: [...t.budget, { id: uid("b"), category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0 }] }));
+    mutateTrip(t => ({ ...t, budget: [...t.budget, { id: uid("b"), category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0, payerId: u.budgetFormPayerId || state.currentUserId }] }));
     u.budgetModalOpen = false;
     render();
   },
@@ -798,28 +879,40 @@ function renderItinerary(trip, day) {
 /* ---------------------------------------------------------------------- */
 function renderBudget(trip) {
   const canEdit = canEditGeneral();
+  const canManage = isPrimaryEditor();
+  ensureFxRates();
   const total = trip.budget.reduce((sum, b) => sum + b.amount, 0);
+  const totalLocal = convertToLocal(total, trip);
   const groupsHtml = BUDGET_CATS.map(cat => {
     const items = trip.budget.filter(b => b.category === cat);
     const subtotal = items.reduce((sum, b) => sum + b.amount, 0);
-    const rows = items.map((b, i) => `
+    const rows = items.map((b, i) => {
+      const payer = state.collaborators.find(p => p.id === b.payerId);
+      const payerColor = payer ? PEOPLE_COLORS[payer.colorIdx % PEOPLE_COLORS.length] : "var(--color-neutral-500)";
+      const localAmt = convertToLocal(b.amount, trip);
+      return `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px;font-size:13px;gap:8px">
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
           ${canEdit ? `<div style="display:flex;flex-direction:column;flex:none">
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="down" data-id="${b.id}" style="cursor:pointer;opacity:${i < items.length - 1 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></div>
           </div>` : ""}
-          <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1" />
+          <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
+          ${payer ? `<div data-act="${canEdit ? 'cycleBudgetPayer' : ''}" data-id="${b.id}" title="付款人：${esc(payer.name)}（${canEdit ? '點擊更換' : '僅檢視'}）" style="cursor:${canEdit ? "pointer" : "default"};flex:none">${avatar(payer.initial, payerColor, 20)}</div>` : ""}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex:none">
-          <div style="opacity:.75;display:flex;align-items:center;gap:2px">NT$ <input class="input input-plain" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${canEdit ? "" : "readonly"} style="font-size:13px;width:70px" /></div>
-          ${canEdit ? `<div class="btn btn-icon btn-ghost" data-act="removeBudget" data-id="${b.id}"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
+          <div style="text-align:right">
+            <div style="opacity:.75;display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700">NT$ <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${canEdit ? "" : "readonly"} style="font-size:13px;width:70px;font-family:var(--font-body);font-weight:700" /></div>
+            ${localAmt ? `<div style="font-size:11px;color:var(--color-neutral-500);text-align:right;padding-right:2px">${localAmt}</div>` : ""}
+          </div>
+          ${canManage ? `<div class="btn btn-icon btn-ghost" data-act="removeBudget" data-id="${b.id}"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
     return `<div class="card card-bordered">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div class="card-title" style="font-size:11.5px;letter-spacing:.08em">${esc(cat)}</div>
-          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700)">NT$ ${fmtMoney(subtotal)}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(subtotal)}</div>
         </div>
         ${rows || '<div style="font-size:12.5px;opacity:.5;padding:4px 2px">尚無花費</div>'}
       </div>`;
@@ -827,14 +920,18 @@ function renderBudget(trip) {
 
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);flex-wrap:wrap;gap:8px">
-      <div style="font-size:14px;opacity:.7">總花費（含所有旅伴新增）</div>
-      ${canEdit ? `<div class="btn btn-accent-outline" data-act="openAddBudget"><i data-lucide="plus" style="width:15px;height:15px"></i> 新增花費</div>` : ""}
+      <div style="font-size:14px;opacity:.7">團體總花費（含所有旅伴新增）</div>
+      ${canManage ? `<div class="btn btn-accent-outline" data-act="openAddBudget"><i data-lucide="plus" style="width:15px;height:15px"></i> 新增花費</div>` : ""}
     </div>
     <div class="card elev-md" style="padding:var(--space-4);margin-bottom:var(--space-4);flex-direction:row;align-items:center;justify-content:space-between">
       <div class="card-title" style="font-size:16px">合計</div>
-      <div style="font-size:26px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-heading)">NT$ ${fmtMoney(total)}</div>
+      <div style="text-align:right">
+        <div style="font-size:26px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(total)}</div>
+        ${totalLocal ? `<div style="font-size:12px;color:var(--color-neutral-500)">${totalLocal}（今日匯率）</div>` : ""}
+      </div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:var(--space-3)">${groupsHtml}</div>`;
+    <div style="display:flex;flex-direction:column;gap:var(--space-3)">${groupsHtml}</div>
+    ${totalLocal ? `<div style="text-align:center;margin-top:var(--space-4);font-size:11px;color:var(--color-neutral-400)">匯率資料來源：<a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" style="color:inherit">ExchangeRate-API</a></div>` : ""}`;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -845,30 +942,25 @@ function renderMemo(trip) {
   const filtersHtml = filters.map(f => `
     <div class="tag" data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;background:${state.memoTagFilter === f.id ? "var(--color-accent)" : "var(--color-surface)"};color:${state.memoTagFilter === f.id ? "var(--color-bg)" : "var(--color-text)"}">${esc(f.label)}</div>`).join("");
 
-  const visible = trip.memoItems.filter(m => state.memoTagFilter === "all" || m.tag === state.memoTagFilter);
+  const visible = trip.memoItems.filter(m => m.ownerId === state.currentUserId && (state.memoTagFilter === "all" || m.tag === state.memoTagFilter));
   const cardsHtml = visible.map((m, i) => {
-    const owner = state.collaborators.find(p => p.id === m.ownerId);
     const tagIdx = trip.memoTags.indexOf(m.tag);
     const tagClass = MEMO_TAG_CLASSES[tagIdx % MEMO_TAG_CLASSES.length] || "tag-neutral";
-    const canEditThis = m.ownerId === state.currentUserId;
-    const ownerColor = owner ? PEOPLE_COLORS[owner.colorIdx % PEOPLE_COLORS.length] : "var(--color-neutral-500)";
     return `<div class="card card-bordered" style="padding:var(--space-3);gap:8px">
-        ${canEditThis ? `<div style="display:flex;justify-content:flex-end;gap:2px;margin-bottom:-6px">
+        <div style="display:flex;justify-content:flex-end;gap:2px;margin-bottom:-6px">
             <div data-act="reorderMemo" data-dir="up" data-id="${m.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25}"><i data-lucide="chevron-up" style="width:13px;height:13px"></i></div>
             <div data-act="reorderMemo" data-dir="down" data-id="${m.id}" style="cursor:pointer;opacity:${i < visible.length - 1 ? 1 : 0.25}"><i data-lucide="chevron-down" style="width:13px;height:13px"></i></div>
-          </div>` : ""}
+          </div>
         ${imageSlot("memo-photo-" + m.id, "商品照片", { style: "width:100%;height:110px", radius: 6 })}
         <div class="tag ${tagClass}" style="align-self:flex-start">${esc(m.tag)}</div>
-        <input class="input input-plain" data-bind-blur="memoName" data-id="${m.id}" data-owner="${m.ownerId}" value="${esc(m.name)}" ${canEditThis ? "" : "readonly"} style="font-size:14px;font-weight:700;font-family:var(--font-heading)" />
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);display:flex;align-items:center;gap:2px">NT$ <input class="input input-plain" type="number" data-bind-blur="memoPrice" data-id="${m.id}" data-owner="${m.ownerId}" value="${m.price}" ${canEditThis ? "" : "readonly"} style="font-size:14px;font-weight:700;color:var(--color-accent-700);width:70px" /></div>
-          ${avatar(owner ? owner.initial : "?", ownerColor, 20)}
-        </div>
-        ${canEditThis ? `<div class="btn btn-ghost" data-act="removeMemo" data-id="${m.id}" style="font-size:11.5px;padding-left:4px"><i data-lucide="trash-2" style="width:12px;height:12px"></i> 刪除</div>` : ""}
+        <input class="input input-plain" data-bind-blur="memoName" data-id="${m.id}" data-owner="${m.ownerId}" value="${esc(m.name)}" style="font-size:14px;font-weight:700;font-family:var(--font-heading)" />
+        <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);display:flex;align-items:center;gap:2px">NT$ <input class="input input-plain input-amount" type="number" data-bind-blur="memoPrice" data-id="${m.id}" data-owner="${m.ownerId}" value="${m.price}" style="font-size:14px;font-weight:700;color:var(--color-accent-700);width:70px" /></div>
+        <div class="btn btn-ghost" data-act="removeMemo" data-id="${m.id}" style="font-size:11.5px;padding-left:4px"><i data-lucide="trash-2" style="width:12px;height:12px"></i> 刪除</div>
       </div>`;
   }).join("");
 
   return `
+    <div style="font-size:12.5px;opacity:.6;margin-bottom:var(--space-3)">這是你的個人清單，只有你看得到（其他旅伴看不到你的項目，你也看不到他們的）</div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);flex-wrap:wrap;gap:10px">
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${filtersHtml}
@@ -910,6 +1002,7 @@ function renderModals(trip) {
   if (state.ui.budgetModalOpen) {
     const u = state.ui;
     const opts = BUDGET_CATS.map(c => `<option value="${c}" ${u.budgetFormCategory === c ? "selected" : ""}>${c}</option>`).join("");
+    const payerOpts = state.collaborators.map(p => `<option value="${p.id}" ${u.budgetFormPayerId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
     html += `
     <div class="dialog-backdrop" data-act="closeModal">
       <div class="dialog" data-stop-click>
@@ -917,6 +1010,7 @@ function renderModals(trip) {
         <div class="field"><label>分類</label><select class="input" id="bf-category">${opts}</select></div>
         <div class="field"><label>項目名稱</label><input class="input" id="bf-label" value="${esc(u.budgetFormLabel)}" placeholder="例：飯店住宿費" /></div>
         <div class="field"><label>金額 (NT$)</label><input class="input" id="bf-amount" type="number" value="${esc(u.budgetFormAmount)}" placeholder="0" /></div>
+        <div class="field"><label>由誰付款</label><select class="input" id="bf-payer">${payerOpts}</select></div>
         <div class="dialog-actions">
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
           <div class="btn btn-accent-outline" data-act="saveBudgetForm">新增</div>
@@ -1074,10 +1168,13 @@ function initEvents() {
         state.ui.budgetFormCategory = document.getElementById("bf-category").value;
         state.ui.budgetFormLabel = document.getElementById("bf-label").value;
         state.ui.budgetFormAmount = document.getElementById("bf-amount").value;
+        const payerEl = document.getElementById("bf-payer");
+        state.ui.budgetFormPayerId = payerEl ? payerEl.value : state.currentUserId;
         actions.saveBudget();
         break;
       }
       case "removeBudget": actions.removeBudget(id); break;
+      case "cycleBudgetPayer": actions.cycleBudgetPayer(id); break;
       case "selectMemoTagFilter": actions.selectMemoTagFilter(id); break;
       case "addMemoTag": actions.addMemoTag(); break;
       case "openAddMemo": actions.openAddMemo(); break;
@@ -1166,8 +1263,8 @@ function reorderMemoViaChevron(actEl) {
   const dir = actEl.getAttribute("data-dir");
   const id = actEl.getAttribute("data-id");
   const trip = findTrip();
-  const group = state.memoTagFilter === "all" ? null : state.memoTagFilter;
-  const list = group == null ? trip.memoItems : trip.memoItems.filter(m => m.tag === group);
+  const tagFilter = state.memoTagFilter;
+  const list = trip.memoItems.filter(m => m.ownerId === state.currentUserId && (tagFilter === "all" || m.tag === tagFilter));
   const idx = list.findIndex(x => x.id === id);
   const targetIdx = dir === "up" ? idx - 1 : idx + 1;
   if (targetIdx < 0 || targetIdx >= list.length) return;
