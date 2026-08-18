@@ -482,10 +482,11 @@ function imageSlot(id, placeholder, opts) {
   const shapeClass = opts.circle ? "border-radius:50%" : `border-radius:${opts.radius != null ? opts.radius : 0}px`;
   const fitAttr = opts.fit === "contain" ? ' data-fit="contain"' : "";
   const compact = !!opts.compact;
+  const compactIconSize = opts.compactIconSize || 16;
   const inner = src
     ? `<img src="${src}" alt="">`
     : compact
-      ? `<div class="slot-placeholder" style="padding:0;gap:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></div>`
+      ? `<div class="slot-placeholder" style="padding:0;gap:0"><svg width="${compactIconSize}" height="${compactIconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></div>`
       : `<div class="slot-placeholder"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg><span>${esc(placeholder)}</span></div>`;
   const actionsHtml = src
     ? `<div class="slot-actions">
@@ -731,7 +732,8 @@ function renderItinerary(trip, day) {
         </div>
         <input class="input input-plain" data-bind-blur="itemNote" data-id="${it.id}" value="${esc(it.note)}" ${canEdit ? "" : "readonly"} placeholder="備註" style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px;width:calc(100% - 40px)" />
       ` : "";
-      const thumb = imageSlot("item-photo-" + it.id, "", { style: "width:52px;height:52px", radius: 8, compact: true });
+      const thumbSize = canEdit ? 52 : 88;
+      const thumb = imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24 });
       return `
       <div data-item-row="${it.id}" style="flex:1;min-width:240px">
         <div class="card item-card ${it.isBackup ? "backup" : "normal"}" style="opacity:${state.ui.draggingItemId === it.id ? 0.5 : 1}">
