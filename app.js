@@ -141,8 +141,8 @@ function initialData() {
       ],
       memoTags: ["藥妝店", "百貨公司"],
       memoItems: [
-        { id: "m1", tag: "藥妝店", ownerId: "p1", name: "SHISEIDO 防曬乳", price: 680, hasPhoto: false },
-        { id: "m2", tag: "百貨公司", ownerId: "p2", name: "沖繩黑糖伴手禮", price: 450, hasPhoto: false }
+        { id: "m1", tag: "藥妝店", ownerId: "p1", name: "SHISEIDO 防曬乳", price: 680, currency: "TWD", hasPhoto: false },
+        { id: "m2", tag: "百貨公司", ownerId: "p2", name: "沖繩黑糖伴手禮", price: 1580, currency: "JPY", hasPhoto: false }
       ]
     },
     {
@@ -175,7 +175,7 @@ function initialData() {
         { id: "b6", category: "住宿", label: "海雲台海景公寓 5 晚", amount: 12000, currency: "TWD", payerIds: ["p1"] }
       ],
       memoTags: ["藥妝店"],
-      memoItems: [{ id: "m3", tag: "藥妝店", ownerId: "p3", name: "雪花秀面膜", price: 1200, hasPhoto: false }]
+      memoItems: [{ id: "m3", tag: "藥妝店", ownerId: "p3", name: "雪花秀面膜", price: 45000, currency: "KRW", hasPhoto: false }]
     }
   ];
 }
@@ -201,7 +201,7 @@ function defaultState() {
       editingItemId: null,
       formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
       budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [],
-      memoFormTag: "", memoFormName: "", memoFormPrice: "",
+      memoFormTag: "", memoFormName: "", memoFormPrice: "", memoFormCurrency: "TWD",
       newGuestName: "",
       isEditingTripName: false, tripNameDraft: "",
       collabMenuOpen: false,
@@ -222,14 +222,15 @@ function migrateState(s) {
   if (!s.collaborators.some(p => p.isPrimaryEditor)) {
     if (s.collaborators[0]) s.collaborators[0].isPrimaryEditor = true;
   }
-  // 舊的預算項目可能沒有 currency / payerIds（改版前用的是單一 payerId）—— 補齊避免顯示壞掉
+  // 舊的預算 / 備忘錄項目可能沒有 currency / payerIds（改版前用的是單一 payerId）—— 補齊避免顯示壞掉
   s.trips = s.trips.map(t => ({
     ...t,
     budget: (t.budget || []).map(b => {
       const currency = b.currency || "TWD";
       const payerIds = b.payerIds || (b.payerId ? [b.payerId] : s.collaborators.map(p => p.id));
       return { ...b, currency, payerIds };
-    })
+    }),
+    memoItems: (t.memoItems || []).map(m => ({ ...m, currency: m.currency || "TWD" }))
   }));
   return s;
 }
@@ -467,6 +468,7 @@ const actions = {
 
   setMemoName(id, ownerId, val) { if (ownerId !== state.currentUserId) return; mutateTrip(t => ({ ...t, memoItems: t.memoItems.map(m => m.id === id ? { ...m, name: val } : m) })); render(true); },
   setMemoPrice(id, ownerId, val) { if (ownerId !== state.currentUserId) return; mutateTrip(t => ({ ...t, memoItems: t.memoItems.map(m => m.id === id ? { ...m, price: Number(val) || 0 } : m) })); render(); },
+  setMemoCurrency(id, ownerId, val) { if (ownerId !== state.currentUserId) return; mutateTrip(t => ({ ...t, memoItems: t.memoItems.map(m => m.id === id ? { ...m, currency: val } : m) })); render(); },
   reorderMemo(fromId, toId) {
     const tagFilter = state.memoTagFilter;
     const uidVal = state.currentUserId;
@@ -496,6 +498,7 @@ const actions = {
   },
   closeModal() {
     state.ui.itemModalOpen = false; state.ui.budgetModalOpen = false; state.ui.memoModalOpen = false; state.ui.shareModalOpen = false;
+    state.ui.editingBudgetId = null; state.ui.editingMemoId = null;
     render(true);
   },
   saveItem(isBackup) {
@@ -518,31 +521,48 @@ const actions = {
 
   openAddBudget() {
     if (!isPrimaryEditor()) return;
-    state.ui.budgetModalOpen = true; state.ui.budgetFormCategory = "票券"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = "";
+    state.ui.budgetModalOpen = true; state.ui.editingBudgetId = null;
+    state.ui.budgetFormCategory = "票券"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = "";
     state.ui.budgetFormCurrency = "TWD"; state.ui.budgetFormPayerIds = state.collaborators.map(p => p.id);
     render(true);
   },
+  openEditBudget(item) {
+    if (!canEditGeneral()) return;
+    state.ui.budgetModalOpen = true; state.ui.editingBudgetId = item.id;
+    state.ui.budgetFormCategory = item.category; state.ui.budgetFormLabel = item.label; state.ui.budgetFormAmount = String(item.amount);
+    state.ui.budgetFormCurrency = item.currency || "TWD"; state.ui.budgetFormPayerIds = item.payerIds || [];
+    render(true);
+  },
   saveBudget() {
-    if (!isPrimaryEditor()) { state.ui.budgetModalOpen = false; render(true); return; }
     const u = state.ui;
-    if (!u.budgetFormLabel.trim()) { u.budgetModalOpen = false; render(true); return; }
-    mutateTrip(t => ({ ...t, budget: [...t.budget, {
-      id: uid("b"), category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0,
-      currency: u.budgetFormCurrency || "TWD", payerIds: u.budgetFormPayerIds && u.budgetFormPayerIds.length ? u.budgetFormPayerIds : [state.currentUserId]
-    }] }));
-    u.budgetModalOpen = false;
+    if (!u.budgetFormLabel.trim()) { u.budgetModalOpen = false; u.editingBudgetId = null; render(true); return; }
+    if (u.editingBudgetId) {
+      if (!canEditGeneral()) { u.budgetModalOpen = false; u.editingBudgetId = null; render(true); return; }
+      const editId = u.editingBudgetId;
+      mutateTrip(t => ({ ...t, budget: t.budget.map(b => b.id !== editId ? b : {
+        ...b, category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0,
+        currency: u.budgetFormCurrency || "TWD", payerIds: u.budgetFormPayerIds && u.budgetFormPayerIds.length ? u.budgetFormPayerIds : b.payerIds
+      }) }));
+    } else {
+      if (!isPrimaryEditor()) { u.budgetModalOpen = false; render(true); return; }
+      mutateTrip(t => ({ ...t, budget: [...t.budget, {
+        id: uid("b"), category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0,
+        currency: u.budgetFormCurrency || "TWD", payerIds: u.budgetFormPayerIds && u.budgetFormPayerIds.length ? u.budgetFormPayerIds : [state.currentUserId]
+      }] }));
+    }
+    u.budgetModalOpen = false; u.editingBudgetId = null;
     render();
   },
 
   openAddMemo() {
     const trip = findTrip();
-    state.ui.memoModalOpen = true; state.ui.memoFormTag = trip.memoTags[0] || ""; state.ui.memoFormName = ""; state.ui.memoFormPrice = "";
+    state.ui.memoModalOpen = true; state.ui.memoFormTag = trip.memoTags[0] || ""; state.ui.memoFormName = ""; state.ui.memoFormPrice = ""; state.ui.memoFormCurrency = "TWD";
     render(true);
   },
   saveMemo() {
     const u = state.ui;
     if (!u.memoFormName.trim()) { u.memoModalOpen = false; render(true); return; }
-    mutateTrip(t => ({ ...t, memoItems: [...t.memoItems, { id: uid("m"), tag: u.memoFormTag, ownerId: state.currentUserId, name: u.memoFormName, price: Number(u.memoFormPrice) || 0, hasPhoto: false }] }));
+    mutateTrip(t => ({ ...t, memoItems: [...t.memoItems, { id: uid("m"), tag: u.memoFormTag, ownerId: state.currentUserId, name: u.memoFormName, price: Number(u.memoFormPrice) || 0, currency: u.memoFormCurrency || "TWD", hasPhoto: false }] }));
     u.memoModalOpen = false;
     render();
   },
@@ -945,29 +965,30 @@ function renderBudget(trip) {
       }).join("");
       return `
       <div style="padding:6px 2px;font-size:13px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-            ${canEdit ? `<div style="display:flex;flex-direction:column;flex:none">
-              <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
-              <div data-act="reorderBudget" data-cat="${cat}" data-dir="down" data-id="${b.id}" style="cursor:pointer;opacity:${i < items.length - 1 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></div>
-            </div>` : ""}
-            <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
-          </div>
-          ${canManage ? `<div class="btn btn-icon btn-ghost" data-act="removeBudget" data-id="${b.id}" style="flex:none"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
+        <div style="display:flex;align-items:center;gap:6px">
+          ${canEdit ? `<div style="display:flex;flex-direction:column;flex:none">
+            <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
+            <div data-act="reorderBudget" data-cat="${cat}" data-dir="down" data-id="${b.id}" style="cursor:pointer;opacity:${i < items.length - 1 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></div>
+          </div>` : ""}
+          <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:none">${payerRow}</div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding-left:${canEdit ? "18px" : "0"}">
-          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${payerRow}</div>
-          <div style="display:flex;align-items:baseline;gap:6px;flex:none">
+          <div style="display:flex;align-items:baseline;gap:6px;flex:none;text-align:left">
             <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${canEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />/人</div>
             ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">${convertedText}</div>` : ""}
+          </div>
+          <div style="display:flex;gap:2px;flex:none">
+            ${canEdit ? `<div class="btn btn-icon btn-ghost" data-act="openEditBudget" data-id="${b.id}"><i data-lucide="pencil" style="width:13px;height:13px"></i></div>` : ""}
+            ${canManage ? `<div class="btn btn-icon btn-ghost" data-act="removeBudget" data-id="${b.id}"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
           </div>
         </div>
       </div>`;
     }).join("");
     return `<div class="card card-bordered">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--color-divider)">
           <div class="card-title" style="font-size:11.5px;letter-spacing:.08em">${esc(cat)}</div>
-          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(subtotalTWD)}</div>
+          <div style="font-size:13px;color:var(--color-neutral-600);display:flex;align-items:baseline;gap:5px">小計 <span style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(subtotalTWD)}</span></div>
         </div>
         ${rows || '<div style="font-size:12.5px;opacity:.5;padding:4px 2px">尚無花費</div>'}
       </div>`;
@@ -996,6 +1017,9 @@ function renderBudget(trip) {
 /* Render — 備忘錄                                                         */
 /* ---------------------------------------------------------------------- */
 function renderMemo(trip) {
+  ensureFxRates();
+  const localCur = localCurrencyForTrip(trip);
+  const currencyChoices = ["TWD"].concat(localCur ? [localCur.code] : []);
   const filters = [{ id: "all", label: "全部" }, ...trip.memoTags.map(t => ({ id: t, label: t }))];
   const filtersHtml = filters.map(f => `
     <div class="tag" data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;background:${state.memoTagFilter === f.id ? "var(--color-accent)" : "var(--color-surface)"};color:${state.memoTagFilter === f.id ? "var(--color-bg)" : "var(--color-text)"}">${esc(f.label)}</div>`).join("");
@@ -1004,6 +1028,9 @@ function renderMemo(trip) {
   const cardsHtml = visible.map((m, i) => {
     const tagIdx = trip.memoTags.indexOf(m.tag);
     const tagClass = MEMO_TAG_CLASSES[tagIdx % MEMO_TAG_CLASSES.length] || "tag-neutral";
+    const cur = m.currency || "TWD";
+    const convertedText = convertedTextForItem({ amount: m.price, currency: cur }, trip);
+    const currencyOpts = currencyChoices.map(c => `<option value="${c}" ${cur === c ? "selected" : ""}>${esc(c)}</option>`).join("");
     return `<div class="card card-bordered" style="padding:var(--space-3);gap:8px">
         <div style="display:flex;justify-content:flex-end;gap:2px;margin-bottom:-6px">
             <div data-act="reorderMemo" data-dir="up" data-id="${m.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25}"><i data-lucide="chevron-up" style="width:13px;height:13px"></i></div>
@@ -1012,7 +1039,13 @@ function renderMemo(trip) {
         ${imageSlot("memo-photo-" + m.id, "商品照片", { style: "width:100%;height:110px", radius: 6 })}
         <div class="tag ${tagClass}" style="align-self:flex-start">${esc(m.tag)}</div>
         <input class="input input-plain" data-bind-blur="memoName" data-id="${m.id}" data-owner="${m.ownerId}" value="${esc(m.name)}" style="font-size:14px;font-weight:700;font-family:var(--font-heading)" />
-        <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);display:flex;align-items:center;gap:2px">NT$ <input class="input input-plain input-amount" type="number" data-bind-blur="memoPrice" data-id="${m.id}" data-owner="${m.ownerId}" value="${m.price}" style="font-size:14px;font-weight:700;color:var(--color-accent-700);width:70px" /></div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);display:flex;align-items:center;gap:2px">
+            ${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="memoPrice" data-id="${m.id}" data-owner="${m.ownerId}" value="${m.price}" style="font-size:14px;font-weight:700;color:var(--color-accent-700);width:70px" />
+            ${currencyChoices.length > 1 ? `<select class="input input-plain" data-bind-blur="memoCurrency" data-id="${m.id}" data-owner="${m.ownerId}" style="font-size:11px;width:auto;padding:2px 2px;color:var(--color-neutral-600)">${currencyOpts}</select>` : ""}
+          </div>
+          ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500)">${convertedText}</div>` : ""}
+        </div>
         <div class="btn btn-ghost" data-act="removeMemo" data-id="${m.id}" style="font-size:11.5px;padding-left:4px"><i data-lucide="trash-2" style="width:12px;height:12px"></i> 刪除</div>
       </div>`;
   }).join("");
@@ -1027,7 +1060,8 @@ function renderMemo(trip) {
       <div class="btn btn-accent-outline" data-act="openAddMemo"><i data-lucide="plus" style="width:15px;height:15px"></i> 新增項目</div>
     </div>
     <div class="memo-grid">${cardsHtml || ""}</div>
-    ${visible.length === 0 ? '<div style="padding:var(--space-6) 0;opacity:.6;font-size:13.5px">這個分類還沒有項目</div>' : ""}`;
+    ${visible.length === 0 ? '<div style="padding:var(--space-6) 0;opacity:.6;font-size:13.5px">這個分類還沒有項目</div>' : ""}
+    ${state.fx ? `<div style="text-align:center;margin-top:var(--space-4);font-size:11px;color:var(--color-neutral-400)">匯率資料來源：<a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" style="color:inherit">ExchangeRate-API</a></div>` : ""}`;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1059,6 +1093,7 @@ function renderModals(trip) {
   }
   if (state.ui.budgetModalOpen) {
     const u = state.ui;
+    const isEditing = !!u.editingBudgetId;
     const opts = BUDGET_CATS.map(c => `<option value="${c}" ${u.budgetFormCategory === c ? "selected" : ""}>${c}</option>`).join("");
     const localCur = localCurrencyForTrip(trip);
     const currencyChoices = ["TWD"].concat(localCur ? [localCur.code] : []);
@@ -1071,7 +1106,7 @@ function renderModals(trip) {
     html += `
     <div class="dialog-backdrop" data-act="closeModal">
       <div class="dialog" data-stop-click>
-        <div class="dialog-title">新增花費</div>
+        <div class="dialog-title">${isEditing ? "編輯花費" : "新增花費"}</div>
         <div class="field"><label>分類</label><select class="input" id="bf-category">${opts}</select></div>
         <div class="field"><label>項目名稱</label><input class="input" id="bf-label" value="${esc(u.budgetFormLabel)}" placeholder="例：飯店住宿費" /></div>
         <div style="display:flex;gap:10px">
@@ -1081,7 +1116,7 @@ function renderModals(trip) {
         <div class="field"><label>需要付款的旅伴</label>${payerChecks}</div>
         <div class="dialog-actions">
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
-          <div class="btn btn-accent-outline" data-act="saveBudgetForm">新增</div>
+          <div class="btn btn-accent-outline" data-act="saveBudgetForm">${isEditing ? "儲存" : "新增"}</div>
         </div>
       </div>
     </div>`;
@@ -1090,13 +1125,19 @@ function renderModals(trip) {
     const u = state.ui;
     const opts = trip.memoTags.map(t => `<option value="${esc(t)}" ${u.memoFormTag === t ? "selected" : ""}>${esc(t)}</option>`).join("");
     const currentUserName = (state.collaborators.find(p => p.id === state.currentUserId) || {}).name || "";
+    const localCur = localCurrencyForTrip(trip);
+    const currencyChoices = ["TWD"].concat(localCur ? [localCur.code] : []);
+    const currencyOpts = currencyChoices.map(c => `<option value="${c}" ${u.memoFormCurrency === c ? "selected" : ""}>${esc((CURRENCY_META[c] || CURRENCY_META.TWD).label)}</option>`).join("");
     html += `
     <div class="dialog-backdrop" data-act="closeModal">
       <div class="dialog" data-stop-click>
         <div class="dialog-title">新增備忘項目</div>
         <div class="field"><label>分類</label><select class="input" id="mf-tag">${opts}</select></div>
         <div class="field"><label>品項名稱</label><input class="input" id="mf-name" value="${esc(u.memoFormName)}" placeholder="例：面膜" /></div>
-        <div class="field"><label>價格 (NT$)</label><input class="input" id="mf-price" type="number" value="${esc(u.memoFormPrice)}" placeholder="0" /></div>
+        <div style="display:flex;gap:10px">
+          <div class="field" style="flex:1"><label>價格</label><input class="input" id="mf-price" type="number" value="${esc(u.memoFormPrice)}" placeholder="0" /></div>
+          <div class="field" style="flex:1"><label>幣別</label><select class="input" id="mf-currency">${currencyOpts}</select></div>
+        </div>
         <div style="font-size:12px;opacity:.6">將以「${esc(currentUserName)}」的身份新增，其他旅伴無法編輯此項目</div>
         <div class="dialog-actions">
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
@@ -1233,6 +1274,12 @@ function initEvents() {
         break;
       }
       case "openAddBudget": actions.openAddBudget(); break;
+      case "openEditBudget": {
+        const trip = findTrip();
+        const item = trip.budget.find(b => b.id === id);
+        if (item) actions.openEditBudget(item);
+        break;
+      }
       case "saveBudgetForm": {
         state.ui.budgetFormCategory = document.getElementById("bf-category").value;
         state.ui.budgetFormLabel = document.getElementById("bf-label").value;
@@ -1252,6 +1299,8 @@ function initEvents() {
         state.ui.memoFormTag = document.getElementById("mf-tag").value;
         state.ui.memoFormName = document.getElementById("mf-name").value;
         state.ui.memoFormPrice = document.getElementById("mf-price").value;
+        const memoCurEl = document.getElementById("mf-currency");
+        state.ui.memoFormCurrency = memoCurEl ? memoCurEl.value : "TWD";
         actions.saveMemo();
         break;
       }
@@ -1400,6 +1449,7 @@ function handleFieldCommit(e) {
     case "budgetAmount": actions.setBudgetAmount(id, val); break;
     case "memoName": actions.setMemoName(id, el.getAttribute("data-owner"), val); break;
     case "memoPrice": actions.setMemoPrice(id, el.getAttribute("data-owner"), val); break;
+    case "memoCurrency": actions.setMemoCurrency(id, el.getAttribute("data-owner"), val); break;
     case "collab.name": actions.saveCollabName(val); break;
   }
 }
