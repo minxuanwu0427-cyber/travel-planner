@@ -753,12 +753,12 @@ function renderItinerary(trip, day) {
               ${isExpanded ? "收合" : "詳細行程"} <i data-lucide="${isExpanded ? "chevron-up" : "chevron-down"}" style="width:12px;height:12px"></i>
             </div>
           </div>
-          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">
-            ${thumb}
-            ${canEdit ? `<div style="display:flex;gap:4px">
+          <div style="display:flex;align-items:center;gap:6px;flex:none">
+            ${canEdit ? `<div style="display:flex;flex-direction:column;gap:4px">
                 <div class="btn btn-icon btn-ghost" data-act="openEditItem" data-id="${it.id}"><i data-lucide="pencil" style="width:14px;height:14px"></i></div>
                 <div class="btn btn-icon btn-ghost" data-act="removeItem" data-id="${it.id}"><i data-lucide="trash-2" style="width:14px;height:14px"></i></div>
               </div>` : ""}
+            ${thumb}
           </div>
         </div>
       </div>`;
