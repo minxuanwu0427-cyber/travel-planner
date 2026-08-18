@@ -579,14 +579,28 @@ const actions = {
 
   openAddMemo() {
     const trip = findTrip();
-    state.ui.memoModalOpen = true; state.ui.memoFormTag = trip.memoTags[0] || ""; state.ui.memoFormName = ""; state.ui.memoFormPrice = ""; state.ui.memoFormCurrency = "TWD";
+    state.ui.memoModalOpen = true; state.ui.editingMemoId = null;
+    state.ui.memoFormTag = trip.memoTags[0] || ""; state.ui.memoFormName = ""; state.ui.memoFormPrice = ""; state.ui.memoFormCurrency = "TWD";
+    render(true);
+  },
+  openEditMemo(item) {
+    if (item.ownerId !== state.currentUserId) return;
+    state.ui.memoModalOpen = true; state.ui.editingMemoId = item.id;
+    state.ui.memoFormTag = item.tag; state.ui.memoFormName = item.name; state.ui.memoFormPrice = String(item.price); state.ui.memoFormCurrency = item.currency || "TWD";
     render(true);
   },
   saveMemo() {
     const u = state.ui;
-    if (!u.memoFormName.trim()) { u.memoModalOpen = false; render(true); return; }
-    mutateTrip(t => ({ ...t, memoItems: [...t.memoItems, { id: uid("m"), tag: u.memoFormTag, ownerId: state.currentUserId, name: u.memoFormName, price: Number(u.memoFormPrice) || 0, currency: u.memoFormCurrency || "TWD", hasPhoto: false }] }));
-    u.memoModalOpen = false;
+    if (!u.memoFormName.trim()) { u.memoModalOpen = false; u.editingMemoId = null; render(true); return; }
+    if (u.editingMemoId) {
+      const editId = u.editingMemoId;
+      mutateTrip(t => ({ ...t, memoItems: t.memoItems.map(m => m.id !== editId || m.ownerId !== state.currentUserId ? m : {
+        ...m, tag: u.memoFormTag, name: u.memoFormName, price: Number(u.memoFormPrice) || 0, currency: u.memoFormCurrency || "TWD"
+      }) }));
+    } else {
+      mutateTrip(t => ({ ...t, memoItems: [...t.memoItems, { id: uid("m"), tag: u.memoFormTag, ownerId: state.currentUserId, name: u.memoFormName, price: Number(u.memoFormPrice) || 0, currency: u.memoFormCurrency || "TWD", hasPhoto: false }] }));
+    }
+    u.memoModalOpen = false; u.editingMemoId = null;
     render();
   },
 
@@ -981,8 +995,11 @@ function renderBudget(trip) {
 
   const groupsHtml = BUDGET_CATS.map(cat => {
     const items = trip.budget.filter(b => b.category === cat);
-    // 小計：該分類「所有」項目換算成台幣後加總（不論是誰付款），用來呈現分類花費規模
-    const subtotalTWD = items.reduce((sum, b) => sum + (toTWD(b.amount, b.currency || "TWD") || 0), 0);
+    // 小計：只加總「我」是付款旅伴之一的項目（換算成台幣後加總），跟最上方合計邏輯一致
+    const subtotalTWD = items.reduce((sum, b) => {
+      if (!(b.payerIds || []).includes(state.currentUserId)) return sum;
+      return sum + (toTWD(b.amount, b.currency || "TWD") || 0);
+    }, 0);
     const rows = items.map((b, i) => {
       const cur = b.currency || "TWD";
       const convertedText = convertedTextForItem(b, trip);
@@ -1046,8 +1063,6 @@ function renderBudget(trip) {
 /* ---------------------------------------------------------------------- */
 function renderMemo(trip) {
   ensureFxRates();
-  const localCur = localCurrencyForTrip(trip);
-  const currencyChoices = ["TWD"].concat(localCur ? [localCur.code] : []);
   const filters = [{ id: "all", label: "全部" }, ...trip.memoTags.map(t => ({ id: t, label: t }))];
   const filtersHtml = filters.map(f => `
     <div class="tag" data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;background:${state.memoTagFilter === f.id ? "var(--color-accent)" : "var(--color-surface)"};color:${state.memoTagFilter === f.id ? "var(--color-bg)" : "var(--color-text)"}">${esc(f.label)}</div>`).join("");
@@ -1058,7 +1073,6 @@ function renderMemo(trip) {
     const tagClass = MEMO_TAG_CLASSES[tagIdx % MEMO_TAG_CLASSES.length] || "tag-neutral";
     const cur = m.currency || "TWD";
     const convertedText = convertedTextForItem({ amount: m.price, currency: cur }, trip);
-    const currencyOpts = currencyChoices.map(c => `<option value="${c}" ${cur === c ? "selected" : ""}>${esc(c)}</option>`).join("");
     return `<div class="card card-bordered" style="padding:var(--space-3);gap:8px">
         <div style="display:flex;justify-content:flex-end;gap:2px;margin-bottom:-6px">
             <div data-act="reorderMemo" data-dir="up" data-id="${m.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25}"><i data-lucide="chevron-up" style="width:13px;height:13px"></i></div>
@@ -1066,15 +1080,15 @@ function renderMemo(trip) {
           </div>
         ${imageSlot("memo-photo-" + m.id, "商品照片", { style: "width:100%;height:110px", radius: 6 })}
         <div class="tag ${tagClass}" style="align-self:flex-start">${esc(m.tag)}</div>
-        <input class="input input-plain" data-bind-blur="memoName" data-id="${m.id}" data-owner="${m.ownerId}" value="${esc(m.name)}" style="font-size:14px;font-weight:700;font-family:var(--font-heading)" />
+        <div style="font-size:14px;font-weight:700;font-family:var(--font-heading)">${esc(m.name)}</div>
         <div>
-          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);display:flex;align-items:center;gap:2px">
-            ${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="memoPrice" data-id="${m.id}" data-owner="${m.ownerId}" value="${m.price}" style="font-size:14px;font-weight:700;color:var(--color-accent-700);width:70px" />
-            ${currencyChoices.length > 1 ? `<select class="input input-plain" data-bind-blur="memoCurrency" data-id="${m.id}" data-owner="${m.ownerId}" style="font-size:11px;width:auto;padding:2px 2px;color:var(--color-neutral-600)">${currencyOpts}</select>` : ""}
-          </div>
+          <div style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">${currencySymbol(cur)}${fmtMoney(m.price)}</div>
           ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500)">${convertedText}</div>` : ""}
         </div>
-        <div class="btn btn-ghost" data-act="removeMemo" data-id="${m.id}" style="font-size:11.5px;padding-left:4px"><i data-lucide="trash-2" style="width:12px;height:12px"></i> 刪除</div>
+        <div style="display:flex;gap:4px;justify-content:flex-end">
+          <div class="btn btn-icon btn-ghost" data-act="openEditMemo" data-id="${m.id}"><i data-lucide="pencil" style="width:13px;height:13px"></i></div>
+          <div class="btn btn-icon btn-ghost" data-act="removeMemo" data-id="${m.id}"><i data-lucide="trash-2" style="width:13px;height:13px"></i></div>
+        </div>
       </div>`;
   }).join("");
 
@@ -1155,6 +1169,7 @@ function renderModals(trip) {
   }
   if (state.ui.memoModalOpen) {
     const u = state.ui;
+    const isEditing = !!u.editingMemoId;
     const opts = trip.memoTags.map(t => `<option value="${esc(t)}" ${u.memoFormTag === t ? "selected" : ""}>${esc(t)}</option>`).join("");
     const currentUserName = (state.collaborators.find(p => p.id === state.currentUserId) || {}).name || "";
     const localCur = localCurrencyForTrip(trip);
@@ -1163,17 +1178,17 @@ function renderModals(trip) {
     html += `
     <div class="dialog-backdrop" data-act="closeModal">
       <div class="dialog" data-stop-click>
-        <div class="dialog-title">新增備忘項目</div>
+        <div class="dialog-title">${isEditing ? "編輯備忘項目" : "新增備忘項目"}</div>
         <div class="field"><label>分類</label><select class="input" id="mf-tag">${opts}</select></div>
         <div class="field"><label>品項名稱</label><input class="input" id="mf-name" value="${esc(u.memoFormName)}" placeholder="例：面膜" /></div>
         <div style="display:flex;gap:10px">
           <div class="field" style="flex:1"><label>價格</label><input class="input" id="mf-price" type="number" value="${esc(u.memoFormPrice)}" placeholder="0" /></div>
           <div class="field" style="flex:1"><label>幣別</label><select class="input" id="mf-currency">${currencyOpts}</select></div>
         </div>
-        <div style="font-size:12px;opacity:.6">將以「${esc(currentUserName)}」的身份新增，其他旅伴無法編輯此項目</div>
+        <div style="font-size:12px;opacity:.6">將以「${esc(currentUserName)}」的身份${isEditing ? "編輯" : "新增"}，其他旅伴無法編輯此項目</div>
         <div class="dialog-actions">
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
-          <div class="btn btn-accent-outline" data-act="saveMemoForm">新增</div>
+          <div class="btn btn-accent-outline" data-act="saveMemoForm">${isEditing ? "儲存" : "新增"}</div>
         </div>
       </div>
     </div>`;
@@ -1335,6 +1350,12 @@ function initEvents() {
       case "selectMemoTagFilter": actions.selectMemoTagFilter(id); break;
       case "addMemoTag": actions.addMemoTag(); break;
       case "openAddMemo": actions.openAddMemo(); break;
+      case "openEditMemo": {
+        const trip = findTrip();
+        const item = trip.memoItems.find(m => m.id === id);
+        if (item) actions.openEditMemo(item);
+        break;
+      }
       case "saveMemoForm": {
         state.ui.memoFormTag = document.getElementById("mf-tag").value;
         state.ui.memoFormName = document.getElementById("mf-name").value;
@@ -1526,9 +1547,6 @@ function handleFieldCommit(e) {
     case "dayTitle": actions.setDayTitle(state.activeDayId, val); break;
     case "budgetLabel": actions.setBudgetLabel(id, val); break;
     case "budgetAmount": actions.setBudgetAmount(id, val); break;
-    case "memoName": actions.setMemoName(id, el.getAttribute("data-owner"), val); break;
-    case "memoPrice": actions.setMemoPrice(id, el.getAttribute("data-owner"), val); break;
-    case "memoCurrency": actions.setMemoCurrency(id, el.getAttribute("data-owner"), val); break;
     case "collab.name": actions.saveCollabName(val); break;
   }
 }
