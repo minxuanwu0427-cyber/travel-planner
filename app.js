@@ -481,16 +481,19 @@ function imageSlot(id, placeholder, opts) {
   const style = opts.style || "";
   const shapeClass = opts.circle ? "border-radius:50%" : `border-radius:${opts.radius != null ? opts.radius : 0}px`;
   const fitAttr = opts.fit === "contain" ? ' data-fit="contain"' : "";
+  const compact = !!opts.compact;
   const inner = src
     ? `<img src="${src}" alt="">`
-    : `<div class="slot-placeholder"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg><span>${esc(placeholder)}</span></div>`;
+    : compact
+      ? `<div class="slot-placeholder" style="padding:0;gap:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></div>`
+      : `<div class="slot-placeholder"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg><span>${esc(placeholder)}</span></div>`;
   const actionsHtml = src
     ? `<div class="slot-actions">
         <div class="btn btn-icon" data-act="pickImage" data-slot="${id}" title="更換照片"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
         <div class="btn btn-icon" data-act="removeImage" data-slot="${id}" title="移除照片"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
       </div>`
     : "";
-  return `<div class="image-slot ${src ? "" : "washed"}" data-act="${src ? '' : 'pickImage'}" data-slot="${id}" style="${shapeClass};${style}"${fitAttr}>${inner}${actionsHtml}</div>`;
+  return `<div class="image-slot ${src ? "" : "washed"} ${compact ? "image-slot-compact" : ""}" data-act="${src ? '' : 'pickImage'}" data-slot="${id}" style="${shapeClass};${style}"${fitAttr}>${inner}${actionsHtml}</div>`;
 }
 
 function avatar(initial, color, size) {
@@ -727,8 +730,8 @@ function renderItinerary(trip, day) {
           ${it.locationUrl ? `<a href="${esc(it.locationUrl)}" target="_blank" rel="noopener" title="在 Google 地圖開啟"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg></a>` : ""}
         </div>
         <input class="input input-plain" data-bind-blur="itemNote" data-id="${it.id}" value="${esc(it.note)}" ${canEdit ? "" : "readonly"} placeholder="備註" style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px;width:calc(100% - 40px)" />
-        ${it.hasPhoto ? imageSlot("item-photo-" + it.id, "景點照片", { style: "width:100%;max-width:220px;height:120px;margin-top:6px;margin-left:40px", radius: 8 }) : ""}
       ` : "";
+      const thumb = imageSlot("item-photo-" + it.id, "", { style: "width:52px;height:52px", radius: 8, compact: true });
       return `
       <div data-item-row="${it.id}" style="flex:1;min-width:240px">
         <div class="card item-card ${it.isBackup ? "backup" : "normal"}" style="opacity:${state.ui.draggingItemId === it.id ? 0.5 : 1}">
@@ -750,10 +753,13 @@ function renderItinerary(trip, day) {
               ${isExpanded ? "收合" : "詳細行程"} <i data-lucide="${isExpanded ? "chevron-up" : "chevron-down"}" style="width:12px;height:12px"></i>
             </div>
           </div>
-          ${canEdit ? `<div style="display:flex;gap:4px;flex:none">
-              <div class="btn btn-icon btn-ghost" data-act="openEditItem" data-id="${it.id}"><i data-lucide="pencil" style="width:15px;height:15px"></i></div>
-              <div class="btn btn-icon btn-ghost" data-act="removeItem" data-id="${it.id}"><i data-lucide="trash-2" style="width:15px;height:15px"></i></div>
-            </div>` : ""}
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">
+            ${thumb}
+            ${canEdit ? `<div style="display:flex;gap:4px">
+                <div class="btn btn-icon btn-ghost" data-act="openEditItem" data-id="${it.id}"><i data-lucide="pencil" style="width:14px;height:14px"></i></div>
+                <div class="btn btn-icon btn-ghost" data-act="removeItem" data-id="${it.id}"><i data-lucide="trash-2" style="width:14px;height:14px"></i></div>
+              </div>` : ""}
+          </div>
         </div>
       </div>`;
     }).join("");
