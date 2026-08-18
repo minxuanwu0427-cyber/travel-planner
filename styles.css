@@ -153,6 +153,8 @@ textarea.input { min-height: 90px; resize: vertical; }
 .image-slot:hover .slot-actions, .image-slot:focus-within .slot-actions { opacity: 1; }
 .image-slot .slot-actions .btn-icon { background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent); color: #fff; border-radius: 50%; }
 .image-slot[data-fit="contain"] img { object-fit: contain; }
+.image-slot-compact .slot-actions { top: 2px; right: 2px; gap: 2px; }
+.image-slot-compact .slot-actions .btn-icon { width: 18px; height: 18px; }
 
 /* ---------- dialogs ---------- */
 .dialog-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--space-4); background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent); z-index: 100; }
