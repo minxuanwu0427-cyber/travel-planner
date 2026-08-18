@@ -208,6 +208,9 @@ textarea.input { min-height: 90px; resize: vertical; }
 
 @media (max-width: 640px) {
   body { font-size: 14px; }
+  /* iOS Safari 會在輸入框文字小於 16px 時自動放大畫面，這裡強制所有輸入框維持 16px 避免跳出縮放 */
+  input.input, textarea.input, select.input { font-size: 16px !important; }
+  .input-amount { width: 90px !important; }
   .section-tabs-desktop { display: none; }
   .nav { padding: 10px 14px; padding-top: calc(10px + env(safe-area-inset-top)); gap: 8px; }
   .trip-select { font-size: 14px; max-width: 40vw; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
