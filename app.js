@@ -51,6 +51,38 @@ function esc(str) {
   return String(str == null ? "" : str).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 function fmtMoney(n) { return Math.round(n || 0).toLocaleString(); }
+/* 解析行程總覽的日期範圍文字（例如「2026/10/08 - 2026/10/12（5天4夜）」），抓出起訖日期，
+   用來讓行程頁的每天日期、住宿日期能跟著大標題下方那行文字連動，不用兩邊分開改 */
+function parseDateRangeText(text) {
+  const m = (text || "").match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*-\s*(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (!m) return null;
+  const start = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const end = new Date(Number(m[4]), Number(m[5]) - 1, Number(m[6]));
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return null;
+  return { start, end };
+}
+function formatMonthDay(date) { return `${date.getMonth() + 1}/${date.getDate()}`; }
+function addDays(date, n) { return new Date(date.getTime() + n * 86400000); }
+function isoToDate(iso) {
+  const m = (iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return isNaN(d.getTime()) ? null : d;
+}
+function dateToIso(date) {
+  const yyyy = date.getFullYear(), mm = String(date.getMonth() + 1).padStart(2, "0"), dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function formatFullDate(date) {
+  const mm = String(date.getMonth() + 1).padStart(2, "0"), dd = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}/${mm}/${dd}`;
+}
+function tripDurationLabel(trip) {
+  const start = isoToDate(trip.dateStart), end = isoToDate(trip.dateEnd);
+  if (!start || !end || end < start) return "";
+  const nights = Math.round((end - start) / 86400000);
+  return `${nights + 1}天${nights}夜`;
+}
 /* 估算 textarea 需要幾行才能一次顯示完全部文字（含換行與自動換行），避免還要滑動才看得到全文 */
 function estimateTextareaRows(text, minRows, charsPerLine) {
   const perLine = charsPerLine || 22;
@@ -136,7 +168,7 @@ function initialData() {
   return [
     {
       id: "okinawa", name: "沖繩島嶼散策", country: "日本・沖繩", flag: "🇯🇵",
-      dateRange: "2026/10/08 - 2026/10/12（5天4夜）",
+      dateRange: "2026/10/08 - 2026/10/12（5天4夜）", dateStart: "2026-10-08", dateEnd: "2026-10-12",
       flight: { out: "10/8 桃園 → 那霸　CI 108　09:15", back: "10/12 那霸 → 桃園　CI 109　18:40" },
       stays: [{ id: "st1", name: "那霸月光海景飯店", range: "10/8 - 10/12", nights: 4 }],
       notes: "出境行李：液體單件不超過100ml並裝入透明夾鏈袋。\n入境沖繩：入境卡建議先在機上填寫，租車需國際駕照+台灣駕照正本。\n託運行李：防曬品、噴霧罐請放託運，不可手提。",
@@ -178,7 +210,7 @@ function initialData() {
     },
     {
       id: "busan", name: "釜山之旅", country: "韓國・釜山", flag: "🇰🇷",
-      dateRange: "2026/12/03 - 2026/12/08（6天5夜）",
+      dateRange: "2026/12/03 - 2026/12/08（6天5夜）", dateStart: "2026-12-03", dateEnd: "2026-12-08",
       flight: { out: "12/3 桃園 → 金海　7C 2602　11:20", back: "12/8 金海 → 桃園　7C 2601　20:05" },
       stays: [{ id: "st2", name: "海雲台海景公寓", range: "12/3 - 12/8", nights: 5 }],
       notes: "出境：韓幣建議先換一部分現金，機場匯率較差。\n入境：K-ETA 需提前申請完成。\n託運行李：辣椒醬、罐頭類建議託運，不可手提超量液體。",
@@ -238,8 +270,16 @@ function defaultCollaborators() {
 }
 /* 補齊 Firestore 上可能缺漏的欄位（例如舊資料沒有 currency / payerIds），避免畫面壞掉 */
 function normalizeTrip(trip, collaborators) {
+  // 舊資料可能沒有 dateStart/dateEnd（改成日期選擇器之前用的是一整串文字）—— 從既有的
+  // dateRange 文字反推出來，選擇器才有預設值可以顯示
+  let dateStart = trip.dateStart, dateEnd = trip.dateEnd;
+  if (!dateStart || !dateEnd) {
+    const parsed = parseDateRangeText(trip.dateRange);
+    if (parsed) { dateStart = dateStart || dateToIso(parsed.start); dateEnd = dateEnd || dateToIso(parsed.end); }
+  }
   return {
     ...trip,
+    dateStart: dateStart || "", dateEnd: dateEnd || "",
     budget: (trip.budget || []).map(b => ({
       ...b,
       currency: b.currency || "TWD",
@@ -449,7 +489,26 @@ const actions = {
     if (name) mutateTrip(t => ({ ...t, name }));
     state.ui.isEditingTripName = false; render();
   },
-  setDateRange(val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, dateRange: val })); render(true); },
+  setTripDate(field, val) {
+    if (!canEditGeneral()) return;
+    mutateTrip(t => {
+      const next = { ...t, [field]: val };
+      const start = isoToDate(next.dateStart);
+      const end = isoToDate(next.dateEnd);
+      if (start && end && end >= start) {
+        const nights = Math.round((end - start) / 86400000);
+        next.dateRange = `${formatFullDate(start)} - ${formatFullDate(end)}（${nights + 1}天${nights}夜）`;
+        // 行程頁每一天的日期，跟著新的起始日期重新往後推算
+        next.days = t.days.map(d => ({ ...d, dateLabel: formatMonthDay(addDays(start, d.index - 1)) }));
+        // 只有一筆住宿時，順便把住宿的日期區間跟晚數也一起更新（多筆住宿因為不確定怎麼拆晚數，維持原樣讓你手動調整）
+        if (t.stays.length === 1) {
+          next.stays = [{ ...t.stays[0], range: `${formatMonthDay(start)} - ${formatMonthDay(end)}`, nights }];
+        }
+      }
+      return next;
+    });
+    render(true);
+  },
   setFlightOut(val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, flight: { ...t.flight, out: val } })); render(true); },
   setFlightBack(val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, flight: { ...t.flight, back: val } })); render(true); },
   setStayName(id, val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, stays: t.stays.map(s => s.id === id ? { ...s, name: val } : s) })); render(true); },
@@ -801,7 +860,14 @@ function renderCover(trip) {
     <div class="cover-info">
       <h6>${esc(trip.country)}</h6>
       ${nameHtml}
-      <input class="input input-plain" data-bind-blur="dateRange" value="${esc(trip.dateRange)}" ${canEdit ? "" : "readonly"} style="color:var(--color-bg);opacity:.92;font-size:13px;width:min(300px,90vw)" />
+      ${canEdit
+        ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <input type="date" class="date-picker-light" data-bind-blur="dateStart" value="${esc(trip.dateStart || "")}" />
+            <span style="color:var(--color-bg);opacity:.85;font-size:13px">-</span>
+            <input type="date" class="date-picker-light" data-bind-blur="dateEnd" value="${esc(trip.dateEnd || "")}" min="${esc(trip.dateStart || "")}" />
+            <span style="color:var(--color-accent-200);font-size:12.5px">（${esc(tripDurationLabel(trip))}）</span>
+          </div>`
+        : `<div style="color:var(--color-bg);opacity:.92;font-size:13px">${esc(trip.dateRange)}</div>`}
     </div>
   </div>`;
 }
@@ -1275,7 +1341,47 @@ function renderModals(trip) {
 /* ---------------------------------------------------------------------- */
 /* Root render                                                             */
 /* ---------------------------------------------------------------------- */
+/* 產生一個穩定的 CSS selector 來辨識某個輸入框，重新渲染後才能找回同一個欄位 */
+function escAttrSelectorValue(val) { return String(val).replace(/["\\]/g, "\\$&"); }
+function getStableSelector(el) {
+  if (!el || !el.tagName) return null;
+  if (el.id) return "#" + CSS.escape(el.id);
+  const bind = el.getAttribute("data-bind-blur");
+  if (bind) {
+    let sel = `[data-bind-blur="${escAttrSelectorValue(bind)}"]`;
+    ["data-id", "data-owner", "data-cat"].forEach(attr => {
+      const v = el.getAttribute(attr);
+      if (v != null) sel += `[${attr}="${escAttrSelectorValue(v)}"]`;
+    });
+    return sel;
+  }
+  return null;
+}
+
+/* 替換 innerHTML 過程中，瀏覽器會對即將被移除的焦點欄位強制觸發 blur —— 這段期間
+   暫時關閉「離開欄位即儲存」，避免把打到一半的文字誤存、把編輯狀態重置掉 */
+let suppressBlurCommit = false;
+
 function doRender() {
+  const root = document.getElementById("app");
+
+  // 即時同步可能在使用者正在輸入時觸發重新渲染（例如別人同時在改資料、或 Firestore
+  // 快取/伺服器資料前後到達兩次）——這裡先記住目前正在編輯的欄位，重繪後把游標焦點還回去，
+  // 不然整個輸入框會被換成新的 DOM 節點，正在打的字跟游標位置都會不見。
+  const activeEl = document.activeElement;
+  let focusInfo = null;
+  if (activeEl && root.contains(activeEl) && /^(INPUT|TEXTAREA|SELECT)$/.test(activeEl.tagName)) {
+    const selector = getStableSelector(activeEl);
+    if (selector) {
+      focusInfo = {
+        selector,
+        value: activeEl.value,
+        selectionStart: typeof activeEl.selectionStart === "number" ? activeEl.selectionStart : null,
+        selectionEnd: typeof activeEl.selectionEnd === "number" ? activeEl.selectionEnd : null
+      };
+    }
+  }
+
   const trip = findTrip();
   const day = findDay();
   let sectionHtml = "";
@@ -1292,9 +1398,26 @@ function doRender() {
     ${renderModals(trip)}
     ${renderBottomNav()}
   `;
-  const root = document.getElementById("app");
+  // 替換 innerHTML 會讓原本有焦點的輸入框被瀏覽器強制觸發 blur（因為節點被移除），
+  // 這會誤觸「離開欄位即儲存」的邏輯、存進打到一半的文字，還會把編輯狀態重置掉 ——
+  // 這裡在替換的當下暫時關掉 blur 觸發儲存，換完、把焦點還原後再打開
+  suppressBlurCommit = true;
   root.innerHTML = html;
+  suppressBlurCommit = false;
   refreshIcons();
+
+  if (focusInfo) {
+    try {
+      const newEl = root.querySelector(focusInfo.selector);
+      if (newEl) {
+        newEl.focus();
+        if (typeof newEl.value === "string" && newEl.value !== focusInfo.value) newEl.value = focusInfo.value;
+        if (newEl.setSelectionRange && focusInfo.selectionStart != null) {
+          newEl.setSelectionRange(focusInfo.selectionStart, focusInfo.selectionEnd);
+        }
+      }
+    } catch (e) { /* 找不到對應欄位或不支援選取範圍就略過，不影響其他功能 */ }
+  }
 }
 
 function refreshIcons() {
@@ -1318,12 +1441,12 @@ function initEvents() {
 
   // Click delegation
   root.addEventListener("click", e => {
-    // 點擊 dialog 內部但本身沒有 data-act 的元素（例如 checkbox、文字）時，
-    // closest("[data-act]") 會一路往上找到最外層 backdrop 的 data-act="closeModal"，
-    // 導致誤觸關閉視窗 —— 這裡擋掉這種「跨出 dialog 邊界」的誤判
-    const dialogEl = e.target.closest(".dialog");
+    // 點擊 dialog／collab-menu 內部但本身沒有 data-act 的元素（例如 checkbox、輸入框、文字）時，
+    // closest("[data-act]") 會一路往上找到最外層容器的 data-act（例如 dialog 的 closeModal、
+    // 或 user-chip 的 toggleCollabMenu）—— 這裡擋掉這種「跨出邊界」的誤判
+    const boundaryEl = e.target.closest(".dialog, .collab-menu");
     let actEl = e.target.closest("[data-act]");
-    if (dialogEl && actEl && !dialogEl.contains(actEl)) actEl = null;
+    if (boundaryEl && actEl && !boundaryEl.contains(actEl)) actEl = null;
     if (!actEl) return;
     const act = actEl.getAttribute("data-act");
     if (!act) return;
@@ -1542,6 +1665,7 @@ function startItemDrag(itemId, e) {
 /* field commit map: data-bind-blur attribute -> handler */
 /* 行程 modal 的「地點」欄位：貼上 Google 地圖網址時嘗試自動取地標名稱，短網址則盡力線上解析 */
 async function handleLocationFieldBlur(el) {
+  if (suppressBlurCommit) return;
   const raw = el.value.trim();
   const statusEl = document.getElementById("f-location-status");
   if (!raw) {
@@ -1582,6 +1706,7 @@ async function handleLocationFieldBlur(el) {
   if (statusEl) statusEl.textContent = state.ui.formLocationUrl ? "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟" : "";
 }
 function handleFieldCommit(e) {
+  if (suppressBlurCommit) return;
   const el = e.target;
   if (!el.matches) return;
   if (el.id === "f-location") { handleLocationFieldBlur(el); return; }
@@ -1591,7 +1716,8 @@ function handleFieldCommit(e) {
   const val = el.value;
   switch (field) {
     case "tripName": actions.saveTripName(val); break;
-    case "dateRange": actions.setDateRange(val); break;
+    case "dateStart": actions.setTripDate("dateStart", val); break;
+    case "dateEnd": actions.setTripDate("dateEnd", val); break;
     case "flightOut": actions.setFlightOut(val); break;
     case "flightBack": actions.setFlightBack(val); break;
     case "stayName": actions.setStayName(id, val); break;
