@@ -32,6 +32,8 @@ const SECTION_TABS = [
 const STORAGE_KEY = "travel-planner-state-v1";
 const IDENTITY_KEY = "travel-planner-identity-map";
 const FX_STORAGE_KEY = "travel-planner-fx-rates-v1";
+const UNLOCKED_TRIPS_KEY = "travel-planner-unlocked-trips";
+const VIEW_ONLY_KEY = "travel-planner-view-only-mode";
 /* 依國家對應目的地當地貨幣 */
 const LOCAL_CURRENCY_BY_TRIP = {
   okinawa: { code: "JPY", symbol: "¥" },
@@ -271,7 +273,8 @@ function defaultUiState() {
     lightboxSrc: null,
     expandedGroups: {},
     draggingItemId: null,
-    connectionError: false
+    connectionError: false,
+    unlockModalOpen: false, unlockError: ""
   };
 }
 function defaultCollaborators() {
@@ -322,6 +325,8 @@ let state = {
   collaborators: [],
   images: {},
   fx: null,
+  unlockedTrips: [],
+  viewOnlyMode: false,
   ui: defaultUiState()
 };
 
@@ -331,6 +336,31 @@ function loadIdentityMap() {
 function saveIdentityMap(map) {
   try { localStorage.setItem(IDENTITY_KEY, JSON.stringify(map)); } catch (e) {}
 }
+
+/* 這台裝置解鎖過的其他行程（輸入正確密碼後記住，之後不用每次重打） */
+function loadUnlockedTrips() {
+  try { return JSON.parse(localStorage.getItem(UNLOCKED_TRIPS_KEY) || "[]"); } catch (e) { return []; }
+}
+function saveUnlockedTrips(list) {
+  try { localStorage.setItem(UNLOCKED_TRIPS_KEY, JSON.stringify(list)); } catch (e) {}
+}
+state.unlockedTrips = loadUnlockedTrips();
+// 把某個行程標記成「這台裝置看得到」，用在：分享連結第一次打開的行程、密碼解鎖過的行程、
+// 自己新建立的行程 —— 這三種情況都不該事後又被選單擋住
+function markTripUnlocked(tripId) {
+  if (!tripId || state.unlockedTrips.includes(tripId)) return;
+  state.unlockedTrips = [...state.unlockedTrips, tripId];
+  saveUnlockedTrips(state.unlockedTrips);
+}
+
+/* 「檢視模式」：編輯者自己想單純瀏覽、不想看到編輯按鈕時可以手動切換，跟裝置綁定 */
+function loadViewOnlyMode() {
+  try { return localStorage.getItem(VIEW_ONLY_KEY) === "1"; } catch (e) { return false; }
+}
+function saveViewOnlyMode(on) {
+  try { localStorage.setItem(VIEW_ONLY_KEY, on ? "1" : "0"); } catch (e) {}
+}
+state.viewOnlyMode = loadViewOnlyMode();
 
 /* 匯率快取（每天最多打一次 API，抓不到就靜靜不顯示換算） */
 let fxFetching = false;
@@ -403,11 +433,19 @@ function saveCollaborators() {
   mutateTrip(t => ({ ...t, collaborators: state.collaborators }));
 }
 function canEditGeneral() {
+  if (state.viewOnlyMode) return false; // 手動切成檢視模式時，不管實際權限一律唯讀
   if (!state.currentUserId) return false; // 還沒選擇身份之前，一律視為唯讀，避免誤改資料
   const p = state.collaborators.find(p => p.id === state.currentUserId);
   return !p || p.permission === "編輯";
 }
+/* 這個人「實際權限」是不是編輯者，不受檢視模式影響 —— 用來決定要不要顯示「切回編輯模式」按鈕 */
+function hasEditPermission() {
+  if (!state.currentUserId) return false;
+  const p = state.collaborators.find(p => p.id === state.currentUserId);
+  return !p || p.permission === "編輯";
+}
 function isPrimaryEditor() {
+  if (state.viewOnlyMode) return false;
   const p = state.collaborators.find(p => p.id === state.currentUserId);
   return !!(p && p.isPrimaryEditor);
 }
@@ -431,6 +469,7 @@ const actions = {
     const map = loadIdentityMap();
     const uidVal = map[tripId];
     state.activeTripId = tripId;
+    markTripUnlocked(tripId);
     state.activeDayId = trip.days[0] ? trip.days[0].id : null;
     state.activeSectionTab = state.activeSectionTab; // keep tab
     state.collaborators = trip.collaborators || []; // 旅伴名單是各行程自己的，切換行程要跟著換
@@ -443,6 +482,30 @@ const actions = {
     }
     subscribeToImages(tripId);
     render();
+  },
+  openUnlockModal() {
+    state.ui.unlockModalOpen = true;
+    state.ui.unlockError = "";
+    render(true);
+  },
+  toggleViewOnlyMode() {
+    state.viewOnlyMode = !state.viewOnlyMode;
+    saveViewOnlyMode(state.viewOnlyMode);
+    state.ui.collabMenuOpen = false;
+    render(true);
+  },
+  confirmUnlockTrip(password) {
+    const input = (password || "").trim().toLowerCase();
+    const target = state.trips.find(t => t.id.toLowerCase() === input);
+    if (!target) {
+      state.ui.unlockError = "密碼不對，再試一次";
+      render(true);
+      return;
+    }
+    markTripUnlocked(target.id);
+    state.ui.unlockModalOpen = false;
+    state.ui.unlockError = "";
+    actions.selectTrip(target.id);
   },
   selectSection(id) { state.activeSectionTab = id; render(); },
   openAddTrip() {
@@ -483,6 +546,7 @@ const actions = {
     const localTrip = normalizeTrip({ id, ...newTrip }, null);
     state.trips = [...state.trips, localTrip];
     state.activeTripId = id;
+    markTripUnlocked(id);
     state.activeDayId = days[0] ? days[0].id : null;
     state.collaborators = collaborators;
     subscribeToImages(id);
@@ -697,7 +761,7 @@ const actions = {
       if (!exists) delete state.images["memo-photo-" + state.ui.memoFormId];
     }
     state.ui.itemModalOpen = false; state.ui.budgetModalOpen = false; state.ui.memoModalOpen = false; state.ui.shareModalOpen = false;
-    state.ui.addTripModalOpen = false;
+    state.ui.addTripModalOpen = false; state.ui.unlockModalOpen = false; state.ui.unlockError = "";
     state.ui.editingBudgetId = null; state.ui.editingMemoId = null; state.ui.memoFormId = null;
     render(true);
   },
@@ -867,7 +931,7 @@ function imageSlot(id, placeholder, opts) {
         <div class="btn btn-icon" data-act="removeImage" data-slot="${id}" title="移除照片"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
       </div>`
     : "";
-  return `<div class="image-slot ${src ? "" : "washed"} ${compact ? "image-slot-compact" : ""}" data-act="${src ? '' : 'pickImage'}" data-slot="${id}" style="${shapeClass};${style}"${fitAttr}>${inner}${actionsHtml}</div>`;
+  return `<div class="image-slot ${src ? "" : "washed"} ${compact ? "image-slot-compact" : ""}" data-act="${src ? 'openLightbox' : 'pickImage'}" data-slot="${id}" style="${shapeClass};${style}"${fitAttr}>${inner}${actionsHtml}</div>`;
 }
 
 function avatar(initial, color, size) {
@@ -881,7 +945,11 @@ function avatar(initial, color, size) {
 function renderNav() {
   const trip = findTrip();
   const CODE_LABELS = { okinawa: "JP 沖繩", busan: "KR 釜山" };
-  const tripOptions = state.trips.map(t => `<option value="${t.id}" ${t.id === state.activeTripId ? "selected" : ""}>${esc(CODE_LABELS[t.id] || t.name)}</option>`).join("");
+  // 分享連結收到的裝置預設只看得到當下這個行程，其他行程要輸入密碼解鎖過才會出現在選單裡
+  const visibleTrips = state.trips.filter(t => t.id === state.activeTripId || state.unlockedTrips.includes(t.id));
+  const hasLockedTrips = state.trips.length > visibleTrips.length;
+  const tripOptions = visibleTrips.map(t => `<option value="${t.id}" ${t.id === state.activeTripId ? "selected" : ""}>${esc(CODE_LABELS[t.id] || t.name)}</option>`).join("")
+    + (hasLockedTrips ? `<option value="__unlock__">🔒 切換行程…</option>` : "");
 
   const currentUserObj = state.collaborators.find(p => p.id === state.currentUserId);
   const currentUser = currentUserObj ? { name: currentUserObj.name, initial: currentUserObj.initial, color: PEOPLE_COLORS[currentUserObj.colorIdx % PEOPLE_COLORS.length] } : { name: "", initial: "?", color: "var(--color-neutral-500)" };
@@ -908,12 +976,18 @@ function renderNav() {
   }).join("");
 
   const canEdit = canEditGeneral();
+  const canToggleView = hasEditPermission(); // 只有本來就是編輯者的人才需要這個切換按鈕
+  const viewToggleBtn = canToggleView ? `
+      <div class="btn btn-secondary" data-act="toggleViewOnlyMode" style="font-size:12.5px">${state.viewOnlyMode
+        ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> 切回編輯模式`
+        : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg> 切換為檢視模式`}</div>` : "";
   const menu = state.ui.collabMenuOpen ? `
     <div class="card elev-md collab-menu">
       <div class="collab-menu-label">旅伴</div>
       ${collabRows}
       ${canEdit ? `<div class="btn btn-ghost" data-act="addCollaborator" style="font-size:12.5px;margin-top:4px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg> 新增旅伴</div>
       <div class="btn btn-secondary" data-act="openShareModal" style="font-size:12.5px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1-1"/></svg> 分享此行程連結</div>` : ""}
+      ${viewToggleBtn}
     </div>` : "";
 
   const tabs = SECTION_TABS.map(sec => {
@@ -930,6 +1004,7 @@ function renderNav() {
     <div class="user-chip" data-act="toggleCollabMenu">
       ${avatar(currentUser.initial, currentUser.color, 26)}
       <div class="user-chip-name" style="font-size:13px;font-weight:600">${esc(currentUser.name)}</div>
+      ${state.viewOnlyMode ? `<div class="tag tag-neutral" style="font-size:10.5px;padding:2px 6px">檢視中</div>` : ""}
       ${menu}
     </div>
     <div class="section-tabs-desktop">${tabs}</div>
@@ -1457,6 +1532,20 @@ function renderModals(trip) {
       </div>
     </div>`;
   }
+  if (state.ui.unlockModalOpen) {
+    html += `
+    <div class="dialog-backdrop" data-act="closeModal">
+      <div class="dialog" data-stop-click>
+        <div class="dialog-title">切換到其他行程</div>
+        <div class="field"><label>輸入該行程的密碼（城市英文拼音）</label><input class="input" id="unlock-password" placeholder="例：okinawa" autofocus /></div>
+        ${state.ui.unlockError ? `<div class="unlock-error" style="font-size:12.5px;color:var(--color-danger,#c0392b)">${esc(state.ui.unlockError)}</div>` : ""}
+        <div class="dialog-actions">
+          <div class="btn btn-secondary" data-act="closeModal">取消</div>
+          <div class="btn btn-accent-outline" data-act="confirmUnlockTripForm">確認</div>
+        </div>
+      </div>
+    </div>`;
+  }
   if (state.ui.lightboxSrc) {
     html += `
     <div class="dialog-backdrop lightbox-backdrop" data-act="closeLightbox" style="z-index:200;background:color-mix(in srgb, black 82%, transparent);padding:var(--space-4)">
@@ -1591,6 +1680,7 @@ function initEvents() {
       case "removeCollaborator": actions.removeCollaborator(id); break;
       case "addCollaborator": actions.addCollaborator(); break;
       case "openShareModal": actions.openShareModal(); break;
+      case "toggleViewOnlyMode": actions.toggleViewOnlyMode(); break;
       case "startEditTripName": actions.startEditTripName(); break;
       case "toggleGroupCollapse": actions.toggleGroupCollapse(id); break;
       case "addChecklistItem": actions.addChecklistItem(actEl.getAttribute("data-section"), actEl.getAttribute("data-cat")); break;
@@ -1621,6 +1711,11 @@ function initEvents() {
         state.ui.newTripDateStart = document.getElementById("nt-date-start").value;
         state.ui.newTripDateEnd = document.getElementById("nt-date-end").value;
         actions.saveNewTrip();
+        break;
+      }
+      case "confirmUnlockTripForm": {
+        const pwEl = document.getElementById("unlock-password");
+        actions.confirmUnlockTrip(pwEl ? pwEl.value : "");
         break;
       }
       case "openLightbox": actions.openLightbox(actEl.getAttribute("data-slot")); break;
@@ -1715,7 +1810,10 @@ function initEvents() {
     const el = e.target.closest("[data-act-change]");
     if (!el) return;
     const act = el.getAttribute("data-act-change");
-    if (act === "selectTrip") actions.selectTrip(el.value);
+    if (act === "selectTrip") {
+      if (el.value === "__unlock__") actions.openUnlockModal();
+      else actions.selectTrip(el.value);
+    }
   });
 
   // file input for image slots (single hidden input reused)
@@ -1930,6 +2028,7 @@ function subscribeToTrips() {
       state.activeTripId = target.id;
       state.activeDayId = target.days[0] ? target.days[0].id : null;
     }
+    markTripUnlocked(state.activeTripId);
     const activeTrip = state.trips.find(t => t.id === state.activeTripId);
     state.collaborators = activeTrip ? activeTrip.collaborators : [];
     _tripsLoaded = true;
