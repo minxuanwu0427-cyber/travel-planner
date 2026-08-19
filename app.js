@@ -54,7 +54,8 @@ function fmtMoney(n) { return Math.round(n || 0).toLocaleString(); }
 /* 解析行程總覽的日期範圍文字（例如「2026/10/08 - 2026/10/12（5天4夜）」），抓出起訖日期，
    用來讓行程頁的每天日期、住宿日期能跟著大標題下方那行文字連動，不用兩邊分開改 */
 function parseDateRangeText(text) {
-  const m = (text || "").match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*-\s*(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  // 容忍不同的分隔符號（半形-、全形－、–、~）跟前後空白，避免因為打字習慣不同而解析失敗
+  const m = (text || "").match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*[-－–~]\s*(\d{4})\/(\d{1,2})\/(\d{1,2})/);
   if (!m) return null;
   const start = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const end = new Date(Number(m[4]), Number(m[5]) - 1, Number(m[6]));
@@ -1766,7 +1767,17 @@ function subscribeToCollaborators() {
 function subscribeToTrips() {
   unsubTrips = db.collection("trips").orderBy("createdAt").onSnapshot(snap => {
     const collaborators = state.collaborators;
-    state.trips = snap.docs.map(d => normalizeTrip({ id: d.id, ...d.data() }, collaborators));
+    state.trips = snap.docs.map(d => {
+      const raw = { id: d.id, ...d.data() };
+      const normalized = normalizeTrip(raw, collaborators);
+      // 如果這筆資料原本沒有 dateStart/dateEnd（是從舊的日期文字反推出來的），
+      // 順便把反推結果寫回 Firestore，之後就不用每次重新解析、也不會因為解析失敗而卡住
+      if ((!raw.dateStart || !raw.dateEnd) && normalized.dateStart && normalized.dateEnd) {
+        db.collection("trips").doc(d.id).set({ dateStart: normalized.dateStart, dateEnd: normalized.dateEnd }, { merge: true })
+          .catch(err => console.error("補寫日期欄位失敗", err));
+      }
+      return normalized;
+    });
     if (!state.trips.some(t => t.id === state.activeTripId) && state.trips[0]) {
       // 如果網址帶了分享連結（#trip=xxx）且該行程存在，直接打開那個行程
       const hashMatch = location.hash.match(/#trip=([^&]+)/);
