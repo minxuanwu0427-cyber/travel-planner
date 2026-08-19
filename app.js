@@ -330,7 +330,9 @@ function normalizeTrip(trip, legacyCollaborators) {
       currency: b.currency || "TWD",
       payerIds: b.payerIds || (b.payerId ? [b.payerId] : collaborators.map(p => p.id))
     })),
-    memoItems: (trip.memoItems || []).map(m => ({ ...m, currency: m.currency || "TWD" }))
+    memoItems: (trip.memoItems || []).map(m => ({ ...m, currency: m.currency || "TWD" })),
+    personalChecklist: trip.personalChecklist || [],
+    documents: trip.documents || []
   };
 }
 
@@ -576,7 +578,7 @@ const actions = {
       flight: { out: "", back: "" }, stays: [], notes: "",
       days, packing: { "重要物品": [], "3C": [], "衣物": [], "個人用品": [], "藥品": [], "其他": [] },
       prep: { "票券": [], "保險": [], "其他": [] },
-      budget: [], memoTags: [], memoItems: [],
+      budget: [], memoTags: [], memoItems: [], personalChecklist: [], documents: [],
       collaborators, createdAt: Date.now()
     };
     // 樂觀更新：先在本機把新行程加進列表並切換過去，不用等 Firestore 回應才看得到
@@ -667,6 +669,78 @@ const actions = {
   togglePackingCheck(cat, id) {
     if (!canEditGeneral()) return;
     mutateTrip(t => ({ ...t, packing: { ...t.packing, [cat]: t.packing[cat].map(c => c.id === id ? { ...c, done: !c.done } : c) } }));
+    render();
+  },
+  /* 「我的清單」：每個人各自的待辦/行李清單，跟權限（編輯／檢視）無關，只要選過身份就能勾選、新增、刪除自己的項目 */
+  copyTemplateToPersonal(section) {
+    if (state.viewOnlyMode || !state.currentUserId) return;
+    const trip = findTrip();
+    const template = trip[section] || {};
+    const existingKeys = new Set(
+      trip.personalChecklist.filter(it => it.ownerId === state.currentUserId && it.section === section)
+        .map(it => it.category + "|" + it.label)
+    );
+    const newItems = [];
+    Object.keys(template).forEach(cat => {
+      (template[cat] || []).forEach(c => {
+        const key = cat + "|" + c.label;
+        if (!existingKeys.has(key)) newItems.push({ id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label: c.label, done: false });
+      });
+    });
+    if (!newItems.length) return;
+    mutateTrip(t => ({ ...t, personalChecklist: [...t.personalChecklist, ...newItems] }));
+    render(true);
+  },
+  togglePersonalCheck(id) {
+    if (state.viewOnlyMode) return;
+    const item = findTrip().personalChecklist.find(it => it.id === id);
+    if (!item || item.ownerId !== state.currentUserId) return;
+    mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => it.id === id ? { ...it, done: !it.done } : it) }));
+    render();
+  },
+  setPersonalChecklistLabel(id, val) {
+    if (state.viewOnlyMode) return;
+    const item = findTrip().personalChecklist.find(it => it.id === id);
+    if (!item || item.ownerId !== state.currentUserId) return;
+    mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => it.id === id ? { ...it, label: val } : it) }));
+    render(true);
+  },
+  addPersonalChecklistItem(section, cat) {
+    if (state.viewOnlyMode || !state.currentUserId) return;
+    const label = (window.prompt("新增項目名稱") || "").trim();
+    if (!label) return;
+    mutateTrip(t => ({ ...t, personalChecklist: [...t.personalChecklist, { id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label, done: false }] }));
+    render();
+  },
+  removePersonalChecklistItem(id) {
+    if (state.viewOnlyMode) return;
+    const item = findTrip().personalChecklist.find(it => it.id === id);
+    if (!item || item.ownerId !== state.currentUserId) return;
+    mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.filter(it => it.id !== id) }));
+    render();
+  },
+
+  /* 總覽頁「資料」區：放票券 QRCode、eSIM 設定說明等，跟其他共用內容一樣是編輯者維護、檢視者唯讀 */
+  addDocument() {
+    if (!isPrimaryEditor()) return;
+    const title = (window.prompt("新增資料標題（例如：機票 QRCode、eSIM 設定）") || "").trim();
+    if (!title) return;
+    mutateTrip(t => ({ ...t, documents: [...(t.documents || []), { id: uid("doc"), title, note: "" }] }));
+    render();
+  },
+  removeDocument(id) {
+    if (!isPrimaryEditor()) return;
+    mutateTrip(t => ({ ...t, documents: (t.documents || []).filter(d => d.id !== id) }));
+    render();
+  },
+  setDocumentTitle(id, val) {
+    if (!canEditGeneral()) return;
+    mutateTrip(t => ({ ...t, documents: t.documents.map(d => d.id === id ? { ...d, title: val } : d) }));
+    render(true);
+  },
+  setDocumentNote(id, val) {
+    if (!canEditGeneral()) return;
+    mutateTrip(t => ({ ...t, documents: t.documents.map(d => d.id === id ? { ...d, note: val } : d) }));
     render();
   },
   setNotes(val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, notes: val })); render(true); },
@@ -1124,6 +1198,33 @@ function renderCover(trip) {
 /* ---------------------------------------------------------------------- */
 /* Render — 總覽                                                           */
 /* ---------------------------------------------------------------------- */
+function renderDocumentsCard(trip) {
+  const canEdit = canEditGeneral();
+  const canManage = isPrimaryEditor();
+  const items = trip.documents || [];
+  const rows = items.map(d => `
+    <div class="card card-bordered" style="padding:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px">
+        <input class="input input-plain" data-bind-blur="documentTitle" data-id="${d.id}" value="${esc(d.title)}" ${canEdit ? "" : "readonly"} style="font-size:13.5px;font-weight:700;flex:1" />
+        ${canManage ? `<div class="btn btn-icon btn-ghost" data-act="removeDocument" data-id="${d.id}" style="flex:none"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
+      </div>
+      ${imageSlot("doc-" + d.id, "上傳圖片（例如票券 QRCode）", { style: "width:100%;height:140px", radius: 8, fit: "contain" })}
+      <textarea class="input" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 3)}" style="font-size:12.5px;line-height:1.7;height:auto;margin-top:8px" placeholder="補充說明，例如 eSIM 設定步驟">${esc(d.note)}</textarea>
+    </div>`).join("");
+  return `<div class="card card-bordered" style="grid-area:docs">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <i data-lucide="file-text" style="width:17px;height:17px;color:var(--color-accent)"></i>
+          <div class="card-title" style="font-size:16px">資料</div>
+        </div>
+        ${canManage ? `<div class="btn btn-ghost" data-act="addDocument" style="font-size:12px"><i data-lucide="plus" style="width:14px;height:14px"></i> 新增</div>` : ""}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:10px">
+        ${rows || '<div style="opacity:.5;font-size:13px;grid-column:1/-1">尚無資料，可以放票券 QRCode、eSIM 設定說明等</div>'}
+      </div>
+    </div>`;
+}
+
 function renderOverview(trip) {
   const canEdit = canEditGeneral();
   const autoStays = computeStaysFromDays(trip.days);
@@ -1159,6 +1260,7 @@ function renderOverview(trip) {
       </div>
       <div style="font-size:13px;line-height:1.85">${staysHtml || '<div style="opacity:.5;font-size:13px">尚無住宿資料，在行程裡新增「住宿」類別的項目就會自動出現在這裡</div>'}</div>
     </div>
+    ${renderDocumentsCard(trip)}
   </div>`;
 }
 
@@ -1203,16 +1305,57 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
     </div>`;
 }
 
+/* 「我的清單」：每個人自己的待辦/行李清單，跟公版分開，不管編輯／檢視權限，選過身份就能勾選/新增/刪除自己的項目 */
+function renderPersonalChecklistCard(title, section, gridArea) {
+  const trip = findTrip();
+  const templateCats = section === "prep" ? PREP_CATS : PACKING_CATS;
+  const myItems = trip.personalChecklist.filter(it => it.ownerId === state.currentUserId && it.section === section);
+  const usedCats = templateCats.concat(Array.from(new Set(myItems.map(it => it.category))).filter(c => !templateCats.includes(c)));
+  const canEditMine = !state.viewOnlyMode && !!state.currentUserId;
+  const groups = usedCats.map((cat, i) => {
+    const key = "personal:" + section + ":" + cat;
+    const expanded = !!state.ui.expandedGroups[key];
+    const items = myItems.filter(it => it.category === cat);
+    const rows = items.map(c => `
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:var(--radius-sm)">
+        <div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:${canEditMine ? "pointer" : "default"};width:14px;height:14px;border-radius:50%;border:1.5px solid ${c.done ? "var(--color-accent)" : "var(--color-divider)"};background:${c.done ? "var(--color-accent)" : "transparent"};flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-bg)">
+          ${c.done ? '<i data-lucide="check" style="width:8px;height:8px"></i>' : ""}
+        </div>
+        <input class="input input-plain" data-bind-blur="personalChecklistLabel" data-id="${c.id}" value="${esc(c.label)}" ${canEditMine ? "" : "readonly"} style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1" />
+        ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="removePersonalChecklistItem" data-id="${c.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>` : ""}
+      </div>`).join("");
+    return `<div style="padding:8px 0;border-bottom:${i < usedCats.length - 1 ? "1px solid var(--color-divider)" : "none"}">
+        <div data-act="toggleGroupCollapse" data-id="${esc(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}</div>
+          <i data-lucide="${expanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px;color:var(--color-accent-700)"></i>
+        </div>
+        ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">
+          ${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}
+          ${canEditMine ? `<div class="btn btn-ghost" data-act="addPersonalChecklistItem" data-section="${section}" data-cat="${cat}" style="font-size:12px;padding:4px 6px;justify-content:flex-start;margin-top:2px"><i data-lucide="plus" style="width:13px;height:13px"></i> 新增項目</div>` : ""}
+        </div>` : ""}
+      </div>`;
+  }).join("");
+  return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div class="card-title" style="font-size:16px">${esc(title)}</div>
+        ${canEditMine ? `<div class="btn btn-ghost" data-act="copyTemplateToPersonal" data-section="${section}" style="font-size:11.5px;padding:4px 8px"><i data-lucide="copy" style="width:12px;height:12px"></i> 從公版複製</div>` : ""}
+      </div>
+      ${myItems.length ? groups : `<div style="font-size:12.5px;opacity:.5;padding:4px 2px">${canEditMine ? '還沒有自己的清單，點右上角「從公版複製」開始，或直接新增項目' : '尚無清單'}</div>`}
+    </div>`;
+}
+
 function renderPrep(trip) {
   const canEdit = canEditGeneral();
   return `
   <div class="prep-grid">
-    ${renderChecklistCard("待辦", PREP_CATS, "prep", trip.prep, "togglePrepCheck", "prepLabel", "reorderPrep", "todo")}
+    ${renderChecklistCard("待辦（公版）", PREP_CATS, "prep", trip.prep, "togglePrepCheck", "prepLabel", "reorderPrep", "todo")}
     <div class="card card-bordered" style="grid-area:notes">
       <div class="card-title" style="font-size:16px;margin-bottom:10px">注意事項</div>
       <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(trip.notes, 6)}" style="font-size:13px;line-height:1.85;height:auto" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
     </div>
-    ${renderChecklistCard("行李清單", PACKING_CATS, "packing", trip.packing, "togglePackingCheck", "packingLabel", "reorderPacking", "packing")}
+    ${renderChecklistCard("行李清單（公版）", PACKING_CATS, "packing", trip.packing, "togglePackingCheck", "packingLabel", "reorderPacking", "packing")}
+    ${renderPersonalChecklistCard("我的待辦", "prep", "mytodo")}
+    ${renderPersonalChecklistCard("我的行李清單", "packing", "mypacking")}
   </div>`;
 }
 
@@ -1768,6 +1911,12 @@ function initEvents() {
       case "togglePackingCheck": actions.togglePackingCheck(actEl.getAttribute("data-cat"), id); break;
       case "reorderPrep": reorderViaChevron("prep", actEl); break;
       case "reorderPacking": reorderViaChevron("packing", actEl); break;
+      case "copyTemplateToPersonal": actions.copyTemplateToPersonal(actEl.getAttribute("data-section")); break;
+      case "togglePersonalCheck": actions.togglePersonalCheck(id); break;
+      case "addPersonalChecklistItem": actions.addPersonalChecklistItem(actEl.getAttribute("data-section"), actEl.getAttribute("data-cat")); break;
+      case "removePersonalChecklistItem": actions.removePersonalChecklistItem(id); break;
+      case "addDocument": actions.addDocument(); break;
+      case "removeDocument": actions.removeDocument(id); break;
       case "reorderBudget": reorderViaChevron("budget", actEl); break;
       case "reorderMemo": reorderMemoViaChevron(actEl); break;
       case "selectDay": actions.selectDay(id); break;
@@ -2040,6 +2189,9 @@ function handleFieldCommit(e) {
     case "notes": actions.setNotes(val); break;
     case "prepLabel": actions.setPrepLabel(el.getAttribute("data-cat"), id, val); break;
     case "packingLabel": actions.setPackingLabel(el.getAttribute("data-cat"), id, val); break;
+    case "personalChecklistLabel": actions.setPersonalChecklistLabel(id, val); break;
+    case "documentTitle": actions.setDocumentTitle(id, val); break;
+    case "documentNote": actions.setDocumentNote(id, val); break;
     case "dayTitle": actions.setDayTitle(state.activeDayId, val); break;
     case "budgetLabel": actions.setBudgetLabel(id, val); break;
     case "budgetAmount": actions.setBudgetAmount(id, val); break;
