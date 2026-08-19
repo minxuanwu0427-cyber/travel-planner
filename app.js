@@ -1258,7 +1258,7 @@ function renderModals(trip) {
   }
   if (state.ui.lightboxSrc) {
     html += `
-    <div class="dialog-backdrop" data-act="closeLightbox" style="z-index:200;background:color-mix(in srgb, black 82%, transparent);padding:var(--space-4)">
+    <div class="dialog-backdrop lightbox-backdrop" data-act="closeLightbox" style="z-index:200;background:color-mix(in srgb, black 82%, transparent);padding:var(--space-4)">
       <img src="${state.ui.lightboxSrc}" style="max-width:92vw;max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:var(--shadow-lg)" />
       <div class="btn btn-icon" data-act="closeLightbox" style="position:fixed;top:20px;right:20px;background:color-mix(in srgb, black 45%, transparent);color:#fff;width:40px;height:40px;border-radius:50%"><i data-lucide="x" style="width:20px;height:20px"></i></div>
     </div>`;
