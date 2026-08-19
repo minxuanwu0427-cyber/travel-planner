@@ -243,6 +243,8 @@ textarea.input { min-height: 90px; resize: vertical; }
   .dialog { width: 100%; max-height: 92vh; }
   .dialog-backdrop { padding: 0; align-items: flex-end; }
   .dialog { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  /* 燈箱放大圖是純圖片檢視，不是表單，維持置中而不是變成手機版的底部彈出 */
+  .lightbox-backdrop { align-items: center !important; padding: var(--space-4) !important; }
 
   .memo-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .day-chip { min-width: 62px; padding: 8px 12px; }
