@@ -1261,7 +1261,7 @@ function renderDocumentsCard(trip) {
     return `<div class="card card-bordered" style="padding:var(--space-3);gap:6px">
         ${photoDisplay}
         <input class="input input-plain" data-bind-blur="documentTitle" data-id="${d.id}" value="${esc(d.title)}" ${canEdit ? "" : "readonly"} style="font-size:13.5px;font-weight:700" />
-        <textarea class="input input-plain" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 2)}" style="font-size:12px;line-height:1.6;height:auto;opacity:.8" placeholder="補充說明">${esc(d.note)}</textarea>
+        <textarea class="input input-plain" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 1)}" style="font-size:12px;line-height:1.6;height:auto;opacity:.8" placeholder="補充說明">${esc(d.note)}</textarea>
         ${canManage ? `<div style="display:flex;justify-content:flex-end"><div class="btn btn-icon btn-ghost" data-act="removeDocument" data-id="${d.id}"><i data-lucide="trash-2" style="width:13px;height:13px"></i></div></div>` : ""}
       </div>`;
   }).join("");
@@ -1362,13 +1362,18 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
 function ensurePersonalChecklistSeeded() {
   if (!state.currentUserId || state.viewOnlyMode) return;
   const trip = findTrip();
-  const seeded = trip.checklistSeeded || {};
-  const mine = seeded[state.currentUserId] || {};
-  const sections = ["prep", "packing"].filter(section => !mine[section]);
+  // 用「這個人在這個分類底下是否已經有任何項目」來判斷要不要自動補公版內容進來（不是用另外存一個旗標），
+  // 這樣就算同一個動作被觸發好幾次，也不會重複塞入，因為只要塞過一次、判斷條件就不成立了
+  const sections = ["prep", "packing"].filter(section =>
+    !trip.personalChecklist.some(it => it.ownerId === state.currentUserId && it.section === section)
+  );
   if (!sections.length) return;
   mutateTrip(t => {
     const newItems = [];
     sections.forEach(section => {
+      // mutateTrip 執行當下再檢查一次最新資料，確保萬一已經有項目了就不會重複塞入
+      const already = t.personalChecklist.some(it => it.ownerId === state.currentUserId && it.section === section);
+      if (already) return;
       const template = t[section] || {};
       Object.keys(template).forEach(cat => {
         (template[cat] || []).forEach(c => {
@@ -1376,10 +1381,8 @@ function ensurePersonalChecklistSeeded() {
         });
       });
     });
-    const nextSeeded = { ...(t.checklistSeeded || {}) };
-    nextSeeded[state.currentUserId] = { ...(nextSeeded[state.currentUserId] || {}) };
-    sections.forEach(section => { nextSeeded[state.currentUserId][section] = true; });
-    return { ...t, personalChecklist: [...t.personalChecklist, ...newItems], checklistSeeded: nextSeeded };
+    if (!newItems.length) return t;
+    return { ...t, personalChecklist: [...t.personalChecklist, ...newItems] };
   });
 }
 /* 單一份「我的清單」卡片：不管編輯／檢視權限，只要選過身份就能勾選、新增、刪除，只影響自己的內容 */
@@ -1640,13 +1643,13 @@ function renderMemo(trip) {
   const filters = [{ id: "all", label: "全部" }, ...trip.memoTags.map(t => ({ id: t, label: t }))];
   const filtersHtml = filters.map(f => {
     if (f.id === "all") {
-      return `<div class="tag" data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;background:${state.memoTagFilter === f.id ? "var(--color-accent)" : "var(--color-surface)"};color:${state.memoTagFilter === f.id ? "var(--color-bg)" : "var(--color-text)"}">${esc(f.label)}</div>`;
+      return `<div class="tag" data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;white-space:nowrap;flex:none;background:${state.memoTagFilter === f.id ? "var(--color-accent)" : "var(--color-surface)"};color:${state.memoTagFilter === f.id ? "var(--color-bg)" : "var(--color-text)"}">${esc(f.label)}</div>`;
     }
     const active = state.memoTagFilter === f.id;
     if (state.ui.editingMemoTag === f.id) {
-      return `<input class="input input-plain" data-bind-blur="memoTagName" data-id="${esc(f.id)}" value="${esc(f.id)}" autofocus style="font-size:13px;font-weight:600;padding:6px 10px;border-radius:var(--radius-sm);background:var(--color-surface);width:96px" />`;
+      return `<input class="input input-plain" data-bind-blur="memoTagName" data-id="${esc(f.id)}" value="${esc(f.id)}" autofocus style="font-size:13px;font-weight:600;padding:6px 10px;border-radius:var(--radius-sm);background:var(--color-surface);width:96px;flex:none" />`;
     }
-    return `<div class="tag" style="display:flex;align-items:center;gap:5px;padding:5px 6px 5px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;background:${active ? "var(--color-accent)" : "var(--color-surface)"};color:${active ? "var(--color-bg)" : "var(--color-text)"}">
+    return `<div class="tag" style="display:flex;align-items:center;gap:5px;padding:5px 6px 5px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;white-space:nowrap;flex:none;background:${active ? "var(--color-accent)" : "var(--color-surface)"};color:${active ? "var(--color-bg)" : "var(--color-text)"}">
         <div data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer">${esc(f.label)}</div>
         <div data-act="startEditMemoTag" data-id="${esc(f.id)}" style="cursor:pointer;display:flex;opacity:.7"><i data-lucide="pencil" style="width:11px;height:11px"></i></div>
         <div data-act="removeMemoTag" data-id="${esc(f.id)}" style="cursor:pointer;display:flex;opacity:.7"><i data-lucide="x" style="width:12px;height:12px"></i></div>
@@ -1684,11 +1687,11 @@ function renderMemo(trip) {
 
   return `
     <div style="font-size:12.5px;opacity:.6;margin-bottom:var(--space-3);line-height:1.6">這是你的個人清單，只有你看得到<br />（其他旅伴看不到你的項目，你也看不到他們的）</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);flex-wrap:wrap;gap:10px">
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${filtersHtml}
-        <div class="btn btn-ghost" data-act="addMemoTag" style="font-size:12.5px"><i data-lucide="tag" style="width:14px;height:14px"></i> 新增分類</div>
-      </div>
+    <div class="tag-scroll-row" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px;margin-bottom:10px">
+      ${filtersHtml}
+      <div class="btn btn-ghost" data-act="addMemoTag" style="font-size:12.5px;flex:none;white-space:nowrap"><i data-lucide="tag" style="width:14px;height:14px"></i> 新增分類</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:var(--space-4)">
       <div class="btn btn-accent-outline" data-act="openAddMemo"><i data-lucide="plus" style="width:15px;height:15px"></i> 新增項目</div>
     </div>
     <div class="memo-grid">${cardsHtml || ""}</div>
