@@ -26,11 +26,21 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:14px;font-family:'Figtree',system-ui,sans-serif;color:#37596b">
+    <div style="width:34px;height:34px;border:3px solid #d8e6e6;border-top-color:#37596b;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+    <div style="font-size:14px;opacity:.75">連線同步資料中…</div>
+  </div>
+</div>
+<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 <input type="file" id="hidden-file-input" accept="image/*" style="display:none">
 
 <script src="default-images.js"></script>
 <script src="lucide.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="firebase-init.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
