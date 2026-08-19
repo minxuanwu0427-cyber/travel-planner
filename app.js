@@ -19,7 +19,8 @@ const BUDGET_CATS = ["票券", "交通", "住宿", "其他"];
 const PREP_CATS = ["票券", "保險", "其他"];
 const PACKING_CATS = ["重要物品", "3C", "衣物", "個人用品", "藥品", "其他"];
 const CATEGORY_EMOJI = { "票券": "🎫", "保險": "🛡️", "重要物品": "🔑", "3C": "🔌", "衣物": "👕", "個人用品": "🧴", "藥品": "💊", "其他": "📦" };
-const PEOPLE_COLORS = ["var(--color-accent-500)", "var(--color-accent-2-600)", "var(--color-neutral-600)", "var(--color-accent-700)", "var(--color-accent-800)"];
+/* 莫蘭迪色系（低飽和霧感色調），給每位旅伴的頭像底色用 */
+const PEOPLE_COLORS = ["#A98F82", "#8FA593", "#8C9CB0", "#B79A8E", "#9C93A6", "#AD9E7E", "#7F9E97", "#B08D8B"];
 const MEMO_TAG_CLASSES = ["tag-accent", "tag-accent-2", "tag-neutral", "tag-outline"];
 const SECTION_TABS = [
   { id: "overview", label: "總覽", icon: "layout-dashboard" },
@@ -169,6 +170,10 @@ function initialData() {
   return [
     {
       id: "okinawa", name: "沖繩島嶼散策", country: "日本・沖繩", flag: "🇯🇵",
+      collaborators: [
+        { id: "p1", name: "小美", initial: "美", permission: "編輯", colorIdx: 0, isPrimaryEditor: true },
+        { id: "p2", name: "阿傑", initial: "傑", permission: "編輯", colorIdx: 1 }
+      ],
       dateRange: "2026/10/08 - 2026/10/12（5天4夜）", dateStart: "2026-10-08", dateEnd: "2026-10-12",
       flight: { out: "10/8 桃園 → 那霸　CI 108　09:15", back: "10/12 那霸 → 桃園　CI 109　18:40" },
       stays: [{ id: "st1", name: "那霸月光海景飯店", range: "10/8 - 10/12", nights: 4 }],
@@ -199,7 +204,7 @@ function initialData() {
       budget: [
         { id: "b1", category: "票券", label: "美麗海水族館門票", amount: 1900, currency: "TWD", payerIds: ["p1", "p2"] },
         { id: "b2", category: "交通", label: "單軌電車一日券", amount: 800, currency: "TWD", payerIds: ["p1", "p2"] },
-        { id: "b3", category: "住宿", label: "月光海景飯店 4 晚", amount: 16000, currency: "TWD", payerIds: ["p1", "p2", "p3"] },
+        { id: "b3", category: "住宿", label: "月光海景飯店 4 晚", amount: 16000, currency: "TWD", payerIds: ["p1", "p2"] },
         { id: "b4", category: "其他", label: "網路吃到飽", amount: 500, currency: "TWD", payerIds: ["p1"] },
         { id: "b7", category: "其他", label: "沖繩麵晚餐（現場付現）", amount: 1200, currency: "JPY", payerIds: ["p1", "p2"] }
       ],
@@ -211,6 +216,12 @@ function initialData() {
     },
     {
       id: "busan", name: "釜山之旅", country: "韓國・釜山", flag: "🇰🇷",
+      collaborators: [
+        { id: "p1", name: "小美", initial: "美", permission: "編輯", colorIdx: 0, isPrimaryEditor: true },
+        { id: "p4", name: "小玲", initial: "玲", permission: "編輯", colorIdx: 1 },
+        { id: "p5", name: "Emma", initial: "E", permission: "編輯", colorIdx: 2 },
+        { id: "p6", name: "Sam", initial: "S", permission: "檢視", colorIdx: 3 }
+      ],
       dateRange: "2026/12/03 - 2026/12/08（6天5夜）", dateStart: "2026-12-03", dateEnd: "2026-12-08",
       flight: { out: "12/3 桃園 → 金海　7C 2602　11:20", back: "12/8 金海 → 桃園　7C 2601　20:05" },
       stays: [{ id: "st2", name: "海雲台海景公寓", range: "12/3 - 12/8", nights: 5 }],
@@ -239,7 +250,7 @@ function initialData() {
         { id: "b6", category: "住宿", label: "海雲台海景公寓 5 晚", amount: 12000, currency: "TWD", payerIds: ["p1"] }
       ],
       memoTags: ["藥妝店"],
-      memoItems: [{ id: "m3", tag: "藥妝店", ownerId: "p3", name: "雪花秀面膜", price: 45000, currency: "KRW", hasPhoto: false }]
+      memoItems: [{ id: "m3", tag: "藥妝店", ownerId: "p4", name: "雪花秀面膜", price: 45000, currency: "KRW", hasPhoto: false }]
     }
   ];
 }
@@ -248,6 +259,7 @@ function defaultUiState() {
   return {
     editingCollabId: null, editCollabName: "",
     itemModalOpen: false, budgetModalOpen: false, memoModalOpen: false, shareModalOpen: false, identityModalOpen: false,
+    addTripModalOpen: false, newTripName: "", newTripCountry: "", newTripFlag: "", newTripDateStart: "", newTripDateEnd: "",
     editingItemId: null,
     formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
     budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [],
@@ -270,7 +282,7 @@ function defaultCollaborators() {
   ];
 }
 /* 補齊 Firestore 上可能缺漏的欄位（例如舊資料沒有 currency / payerIds），避免畫面壞掉 */
-function normalizeTrip(trip, collaborators) {
+function normalizeTrip(trip, legacyCollaborators) {
   // 舊資料可能沒有 dateStart/dateEnd（改成日期選擇器之前用的是一整串文字）—— 從既有的
   // dateRange 文字反推出來，選擇器才有預設值可以顯示
   let dateStart = trip.dateStart, dateEnd = trip.dateEnd;
@@ -278,13 +290,19 @@ function normalizeTrip(trip, collaborators) {
     const parsed = parseDateRangeText(trip.dateRange);
     if (parsed) { dateStart = dateStart || dateToIso(parsed.start); dateEnd = dateEnd || dateToIso(parsed.end); }
   }
+  // 舊資料可能還沒有「每個行程自己的旅伴名單」（改版前所有行程共用同一份旅伴）——
+  // 沒有的話先用舊的共用名單當起始值，之後每個行程就能各自增減旅伴
+  const collaborators = (trip.collaborators && trip.collaborators.length)
+    ? trip.collaborators
+    : (legacyCollaborators && legacyCollaborators.length ? legacyCollaborators : defaultCollaborators());
   return {
     ...trip,
     dateStart: dateStart || "", dateEnd: dateEnd || "",
+    collaborators,
     budget: (trip.budget || []).map(b => ({
       ...b,
       currency: b.currency || "TWD",
-      payerIds: b.payerIds || (b.payerId ? [b.payerId] : (collaborators || []).map(p => p.id))
+      payerIds: b.payerIds || (b.payerId ? [b.payerId] : collaborators.map(p => p.id))
     })),
     memoItems: (trip.memoItems || []).map(m => ({ ...m, currency: m.currency || "TWD" }))
   };
@@ -381,9 +399,11 @@ function mutateTrip(fn) {
   }
 }
 function saveCollaborators() {
-  db.collection("meta").doc("shared").set({ collaborators: state.collaborators }).catch(err => console.error("同步旅伴名單失敗", err));
+  // 旅伴名單現在存在「各自行程」自己的文件裡，不再是全部行程共用一份
+  mutateTrip(t => ({ ...t, collaborators: state.collaborators }));
 }
 function canEditGeneral() {
+  if (!state.currentUserId) return false; // 還沒選擇身份之前，一律視為唯讀，避免誤改資料
   const p = state.collaborators.find(p => p.id === state.currentUserId);
   return !p || p.permission === "編輯";
 }
@@ -413,16 +433,75 @@ const actions = {
     state.activeTripId = tripId;
     state.activeDayId = trip.days[0] ? trip.days[0].id : null;
     state.activeSectionTab = state.activeSectionTab; // keep tab
-    if (uidVal && state.collaborators.some(p => p.id === uidVal)) state.currentUserId = uidVal;
+    state.collaborators = trip.collaborators || []; // 旅伴名單是各行程自己的，切換行程要跟著換
+    if (uidVal && state.collaborators.some(p => p.id === uidVal)) {
+      state.currentUserId = uidVal;
+    } else {
+      // 這個裝置在這個行程裡還沒選過身份，強制跳出選擇視窗
+      state.currentUserId = null;
+      state.ui.identityModalOpen = true;
+    }
     subscribeToImages(tripId);
     render();
   },
   selectSection(id) { state.activeSectionTab = id; render(); },
+  openAddTrip() {
+    state.ui.addTripModalOpen = true;
+    state.ui.newTripName = ""; state.ui.newTripCountry = ""; state.ui.newTripFlag = "";
+    state.ui.newTripDateStart = ""; state.ui.newTripDateEnd = "";
+    render(true);
+  },
+  saveNewTrip() {
+    const u = state.ui;
+    if (!u.newTripName.trim()) { u.addTripModalOpen = false; render(true); return; }
+    const id = uid("trip");
+    const start = isoToDate(u.newTripDateStart), end = isoToDate(u.newTripDateEnd);
+    const hasDates = start && end && end >= start;
+    const nights = hasDates ? Math.round((end - start) / 86400000) : 0;
+    const dateRange = hasDates ? `${formatFullDate(start)} - ${formatFullDate(end)}（${nights + 1}天${nights}夜）` : "";
+    const days = hasDates
+      ? Array.from({ length: nights + 1 }, (_, i) => ({ id: uid("d"), index: i + 1, dateLabel: formatMonthDay(addDays(start, i)), title: "", items: [] }))
+      : [{ id: uid("d"), index: 1, dateLabel: "", title: "", items: [] }];
+    // 建立的人自動就是這個新行程的主編輯者
+    const creator = state.collaborators.find(p => p.id === state.currentUserId);
+    const collaborators = [{
+      id: state.currentUserId || uid("p"),
+      name: creator ? creator.name : "我",
+      initial: creator ? creator.initial : "我",
+      permission: "編輯", colorIdx: 0, isPrimaryEditor: true
+    }];
+    const newTrip = {
+      name: u.newTripName.trim(), country: u.newTripCountry.trim(), flag: u.newTripFlag.trim() || "📍",
+      dateRange, dateStart: u.newTripDateStart || "", dateEnd: u.newTripDateEnd || "",
+      flight: { out: "", back: "" }, stays: [], notes: "",
+      days, packing: { "重要物品": [], "3C": [], "衣物": [], "個人用品": [], "藥品": [], "其他": [] },
+      prep: { "票券": [], "保險": [], "其他": [] },
+      budget: [], memoTags: [], memoItems: [],
+      collaborators, createdAt: Date.now()
+    };
+    // 樂觀更新：先在本機把新行程加進列表並切換過去，不用等 Firestore 回應才看得到
+    const localTrip = normalizeTrip({ id, ...newTrip }, null);
+    state.trips = [...state.trips, localTrip];
+    state.activeTripId = id;
+    state.activeDayId = days[0] ? days[0].id : null;
+    state.collaborators = collaborators;
+    subscribeToImages(id);
+    db.collection("trips").doc(id).set(newTrip)
+      .then(() => {
+        // 記住這台裝置在這個新行程裡就是建立者本人，不用再跳一次身份選擇視窗
+        const map = loadIdentityMap();
+        map[id] = collaborators[0].id;
+        saveIdentityMap(map);
+      })
+      .catch(err => console.error("新增行程失敗", err));
+    u.addTripModalOpen = false;
+    render(true);
+  },
   selectDay(dayId) { state.activeDayId = dayId; render(); },
   setFilter(f) { state.itineraryFilter = f; render(); },
 
   toggleCollabMenu() { state.ui.collabMenuOpen = !state.ui.collabMenuOpen; render(true); },
-  closeCollabMenu() { if (state.ui.collabMenuOpen) { state.ui.collabMenuOpen = false; render(true); } },
+  closeCollabMenu() { if (state.ui.collabMenuOpen) { state.ui.collabMenuOpen = false; state.ui.editingCollabId = null; render(true); } },
   addCollaborator() {
     const names = ["新旅伴", "阿凱", "Emma", "Sam", "小魚"];
     const n = names[state.collaborators.length % names.length];
@@ -451,10 +530,19 @@ const actions = {
     const id = state.ui.editingCollabId;
     if (!id) return;
     const name = (val != null ? val : state.ui.editCollabName).trim();
-    state.collaborators = state.collaborators.map(p => p.id === id ? { ...p, name: name || p.name, initial: (name || p.name)[0] } : p);
-    state.ui.editingCollabId = null;
+    // 名字改動不會連動改頭像文字了（頭像文字現在是獨立欄位，見 setCollabInitial）
+    state.collaborators = state.collaborators.map(p => p.id === id ? { ...p, name: name || p.name } : p);
     saveCollaborators();
-    render();
+    render(true);
+  },
+  setCollabInitial(val) {
+    const id = state.ui.editingCollabId;
+    if (!id) return;
+    const initial = (val || "").trim().slice(0, 2);
+    if (!initial) { render(true); return; }
+    state.collaborators = state.collaborators.map(p => p.id === id ? { ...p, initial } : p);
+    saveCollaborators();
+    render(true);
   },
 
   toggleGroupCollapse(key) { state.ui.expandedGroups[key] = !state.ui.expandedGroups[key]; render(true); },
@@ -609,6 +697,7 @@ const actions = {
       if (!exists) delete state.images["memo-photo-" + state.ui.memoFormId];
     }
     state.ui.itemModalOpen = false; state.ui.budgetModalOpen = false; state.ui.memoModalOpen = false; state.ui.shareModalOpen = false;
+    state.ui.addTripModalOpen = false;
     state.ui.editingBudgetId = null; state.ui.editingMemoId = null; state.ui.memoFormId = null;
     render(true);
   },
@@ -801,7 +890,8 @@ function renderNav() {
     const isEditing = state.ui.editingCollabId === p.id;
     const canEdit = canEditGeneral();
     const nameHtml = isEditing
-      ? `<input class="input input-plain" data-bind-blur="collab.name" data-id="${p.id}" value="${esc(state.ui.editCollabName)}" style="height:26px;font-size:12.5px;width:80px" autofocus />`
+      ? `<input class="input input-plain" data-bind-blur="collab.name" data-id="${p.id}" value="${esc(state.ui.editCollabName)}" style="height:26px;font-size:12.5px;width:62px" autofocus />
+         <input class="input input-plain" data-bind-blur="collab.initial" data-id="${p.id}" value="${esc(p.initial)}" maxlength="2" title="頭像顯示的文字，例如兩個人都姓「小」時可以自己改成不同的字" placeholder="頭像字" style="height:26px;font-size:12.5px;width:34px;text-align:center;flex:none" />`
       : (canEdit
           ? `<div data-act="startEditCollab" data-id="${p.id}" style="cursor:pointer;font-size:12.5px;flex:1">${esc(p.name)}</div>`
           : `<div style="font-size:12.5px;flex:1">${esc(p.name)}</div>`);
@@ -836,6 +926,7 @@ function renderNav() {
   return `
   <div class="nav">
     <select class="trip-select" data-act-change="selectTrip">${tripOptions}</select>
+    <div class="btn btn-icon btn-ghost" data-act="openAddTrip" title="新增行程" style="flex:none"><i data-lucide="plus" style="width:16px;height:16px"></i></div>
     <div class="user-chip" data-act="toggleCollabMenu">
       ${avatar(currentUser.initial, currentUser.color, 26)}
       <div class="user-chip-name" style="font-size:13px;font-weight:600">${esc(currentUser.name)}</div>
@@ -1325,6 +1416,29 @@ function renderModals(trip) {
       </div>
     </div>`;
   }
+  if (state.ui.addTripModalOpen) {
+    const u = state.ui;
+    html += `
+    <div class="dialog-backdrop" data-act="closeModal">
+      <div class="dialog" data-stop-click>
+        <div class="dialog-title">新增行程</div>
+        <div style="display:flex;gap:10px">
+          <div class="field" style="flex:2"><label>行程名稱</label><input class="input" id="nt-name" value="${esc(u.newTripName)}" placeholder="例：東京賞櫻之旅" /></div>
+          <div class="field" style="flex:1"><label>國旗</label><input class="input" id="nt-flag" value="${esc(u.newTripFlag)}" placeholder="🇯🇵" /></div>
+        </div>
+        <div class="field"><label>國家・地區</label><input class="input" id="nt-country" value="${esc(u.newTripCountry)}" placeholder="例：日本・東京" /></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="field" style="flex:1"><label>出發日期</label><input type="date" class="input" id="nt-date-start" value="${esc(u.newTripDateStart)}" /></div>
+          <div class="field" style="flex:1"><label>結束日期</label><input type="date" class="input" id="nt-date-end" value="${esc(u.newTripDateEnd)}" min="${esc(u.newTripDateStart)}" /></div>
+        </div>
+        <div style="font-size:12px;opacity:.6">你會自動成為這個新行程的主編輯者，之後可以在旅伴選單裡邀請其他人加入</div>
+        <div class="dialog-actions">
+          <div class="btn btn-secondary" data-act="closeModal">取消</div>
+          <div class="btn btn-accent-outline" data-act="saveNewTripForm">建立行程</div>
+        </div>
+      </div>
+    </div>`;
+  }
   if (state.ui.identityModalOpen) {
     const choicesHtml = state.collaborators.map(p => `
       <div data-act="chooseIdentity" data-id="${p.id}" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--color-surface)">
@@ -1499,6 +1613,16 @@ function initEvents() {
       case "removeItem": actions.removeItem(id); break;
       case "toggleItemExpanded": actions.toggleItemExpanded(id); break;
       case "closeModal": actions.closeModal(); break;
+      case "openAddTrip": actions.openAddTrip(); break;
+      case "saveNewTripForm": {
+        state.ui.newTripName = document.getElementById("nt-name").value;
+        state.ui.newTripCountry = document.getElementById("nt-country").value;
+        state.ui.newTripFlag = document.getElementById("nt-flag").value;
+        state.ui.newTripDateStart = document.getElementById("nt-date-start").value;
+        state.ui.newTripDateEnd = document.getElementById("nt-date-end").value;
+        actions.saveNewTrip();
+        break;
+      }
       case "openLightbox": actions.openLightbox(actEl.getAttribute("data-slot")); break;
       case "closeLightbox": actions.closeLightbox(); break;
       case "saveItemForm": {
@@ -1743,6 +1867,7 @@ function handleFieldCommit(e) {
     case "budgetLabel": actions.setBudgetLabel(id, val); break;
     case "budgetAmount": actions.setBudgetAmount(id, val); break;
     case "collab.name": actions.saveCollabName(val); break;
+    case "collab.initial": actions.setCollabInitial(val); break;
   }
 }
 
@@ -1752,43 +1877,48 @@ function handleFieldCommit(e) {
 let unsubTrips = null;
 let unsubImages = null;
 let imagesTripId = null;
-let _collabLoaded = false, _tripsLoaded = false, _firstRendered = false;
+let _tripsLoaded = false, _firstRendered = false;
+let legacyCollaboratorsCache = null; // 舊版「全部行程共用一份旅伴」資料的一次性備援，只在遷移時用
+
+async function fetchLegacyCollaborators() {
+  try {
+    const doc = await db.collection("meta").doc("shared").get();
+    return doc.exists ? (doc.data().collaborators || []) : [];
+  } catch (e) { return []; }
+}
 
 function afterInitialLoad() {
   if (_firstRendered) { render(); return; }
-  if (!_collabLoaded || !_tripsLoaded) return;
+  if (!_tripsLoaded) return;
   _firstRendered = true;
   const map = loadIdentityMap();
   const uidVal = map[state.activeTripId];
-  if (uidVal && state.collaborators.some(p => p.id === uidVal)) state.currentUserId = uidVal;
-  else if (state.collaborators[0]) state.currentUserId = state.collaborators[0].id;
+  if (uidVal && state.collaborators.some(p => p.id === uidVal)) {
+    state.currentUserId = uidVal;
+  } else {
+    // 這個裝置在這個行程裡還沒選過身份 —— 強制跳出選擇視窗，不再自動當成第一位旅伴
+    state.currentUserId = null;
+    state.ui.identityModalOpen = true;
+  }
   subscribeToImages(state.activeTripId);
   initEvents();
   doRender();
 }
 
-function subscribeToCollaborators() {
-  db.collection("meta").doc("shared").onSnapshot(doc => {
-    state.collaborators = doc.exists ? (doc.data().collaborators || []) : [];
-    _collabLoaded = true;
-    afterInitialLoad();
-  }, err => {
-    console.error("讀取旅伴名單失敗", err);
-    renderConnectionError();
-  });
-}
-
 function subscribeToTrips() {
   unsubTrips = db.collection("trips").orderBy("createdAt").onSnapshot(snap => {
-    const collaborators = state.collaborators;
     state.trips = snap.docs.map(d => {
       const raw = { id: d.id, ...d.data() };
-      const normalized = normalizeTrip(raw, collaborators);
-      // 如果這筆資料原本沒有 dateStart/dateEnd（是從舊的日期文字反推出來的），
-      // 順便把反推結果寫回 Firestore，之後就不用每次重新解析、也不會因為解析失敗而卡住
+      const normalized = normalizeTrip(raw, legacyCollaboratorsCache);
+      // 如果這筆資料原本沒有自己的 dateStart/dateEnd 或 collaborators（是舊版資料反推/沿用來的），
+      // 順便把結果寫回 Firestore，之後就不用每次重新解析、也不會因為解析失敗而卡住
+      const patch = {};
       if ((!raw.dateStart || !raw.dateEnd) && normalized.dateStart && normalized.dateEnd) {
-        db.collection("trips").doc(d.id).set({ dateStart: normalized.dateStart, dateEnd: normalized.dateEnd }, { merge: true })
-          .catch(err => console.error("補寫日期欄位失敗", err));
+        patch.dateStart = normalized.dateStart; patch.dateEnd = normalized.dateEnd;
+      }
+      if (!raw.collaborators || !raw.collaborators.length) patch.collaborators = normalized.collaborators;
+      if (Object.keys(patch).length) {
+        db.collection("trips").doc(d.id).set(patch, { merge: true }).catch(err => console.error("補寫欄位失敗", err));
       }
       return normalized;
     });
@@ -1800,6 +1930,8 @@ function subscribeToTrips() {
       state.activeTripId = target.id;
       state.activeDayId = target.days[0] ? target.days[0].id : null;
     }
+    const activeTrip = state.trips.find(t => t.id === state.activeTripId);
+    state.collaborators = activeTrip ? activeTrip.collaborators : [];
     _tripsLoaded = true;
     afterInitialLoad();
   }, err => {
@@ -1831,7 +1963,6 @@ async function ensureSeedData() {
     const { id, ...data } = trip;
     batch.set(db.collection("trips").doc(id), { ...data, createdAt: i });
   });
-  batch.set(db.collection("meta").doc("shared"), { collaborators: defaultCollaborators() });
   await batch.commit();
   const defaultImages = window.DEFAULT_IMAGES || {};
   for (const slotId of Object.keys(defaultImages)) {
@@ -1866,6 +1997,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.error("初始資料寫入失敗", e);
   }
-  subscribeToCollaborators();
   subscribeToTrips();
 });
