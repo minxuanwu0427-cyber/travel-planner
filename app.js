@@ -297,7 +297,9 @@ function defaultUiState() {
     expandedGroups: {},
     draggingItemId: null,
     connectionError: false,
-    unlockModalOpen: false, unlockError: ""
+    unlockModalOpen: false, unlockError: "",
+    editingMemoTag: null,
+    swapDayModalOpen: false
   };
 }
 function defaultCollaborators() {
@@ -601,6 +603,32 @@ const actions = {
     render(true);
   },
   selectDay(dayId) { state.activeDayId = dayId; render(); },
+  openSwapDayModal() {
+    if (!canEditGeneral()) return;
+    state.ui.swapDayModalOpen = true;
+    render(true);
+  },
+  swapDays(targetDayId) {
+    if (!canEditGeneral()) return;
+    const sourceId = state.activeDayId;
+    state.ui.swapDayModalOpen = false;
+    if (!sourceId || sourceId === targetDayId) { render(true); return; }
+    mutateTrip(t => {
+      const source = t.days.find(d => d.id === sourceId);
+      const target = t.days.find(d => d.id === targetDayId);
+      if (!source || !target) return t;
+      // 只互換內容（標題＋行程項目），日期／Day 編號留在原本的位置上不動
+      return {
+        ...t,
+        days: t.days.map(d => {
+          if (d.id === sourceId) return { ...d, title: target.title, items: target.items };
+          if (d.id === targetDayId) return { ...d, title: source.title, items: source.items };
+          return d;
+        })
+      };
+    });
+    render(true);
+  },
   setFilter(f) { state.itineraryFilter = f; render(); },
 
   toggleCollabMenu() { state.ui.collabMenuOpen = !state.ui.collabMenuOpen; render(true); },
@@ -868,6 +896,31 @@ const actions = {
     mutateTrip(t => t.memoTags.includes(tag) ? t : { ...t, memoTags: [...t.memoTags, tag] });
     render();
   },
+  startEditMemoTag(tag) {
+    state.ui.editingMemoTag = tag;
+    render(true);
+  },
+  saveMemoTag(oldTag, val) {
+    const name = (val || "").trim();
+    state.ui.editingMemoTag = null;
+    if (!name || name === oldTag) { render(true); return; }
+    if (findTrip().memoTags.includes(name)) { render(true); return; } // 避免改成跟其他分類同名
+    mutateTrip(t => ({
+      ...t,
+      memoTags: t.memoTags.map(tg => tg === oldTag ? name : tg),
+      memoItems: t.memoItems.map(m => m.tag === oldTag ? { ...m, tag: name } : m)
+    }));
+    if (state.memoTagFilter === oldTag) state.memoTagFilter = name;
+    render(true);
+  },
+  removeMemoTag(tag) {
+    const trip = findTrip();
+    const count = trip.memoItems.filter(m => m.tag === tag).length;
+    if (count > 0 && !window.confirm(`「${tag}」還有 ${count} 個項目使用這個分類，刪除後這些項目不會被刪除，只是不再屬於任何分類。確定要刪除嗎？`)) return;
+    mutateTrip(t => ({ ...t, memoTags: t.memoTags.filter(tg => tg !== tag) }));
+    if (state.memoTagFilter === tag) state.memoTagFilter = "all";
+    render(true);
+  },
 
   openAddItem() {
     state.ui.itemModalOpen = true; state.ui.editingItemId = null;
@@ -890,6 +943,7 @@ const actions = {
     }
     state.ui.itemModalOpen = false; state.ui.budgetModalOpen = false; state.ui.memoModalOpen = false; state.ui.shareModalOpen = false;
     state.ui.addTripModalOpen = false; state.ui.unlockModalOpen = false; state.ui.unlockError = "";
+    state.ui.swapDayModalOpen = false;
     state.ui.editingBudgetId = null; state.ui.editingMemoId = null; state.ui.memoFormId = null;
     render(true);
   },
@@ -1202,15 +1256,15 @@ function renderDocumentsCard(trip) {
   const canEdit = canEditGeneral();
   const canManage = isPrimaryEditor();
   const items = trip.documents || [];
-  const rows = items.map(d => `
-    <div class="card card-bordered" style="padding:10px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px">
-        <input class="input input-plain" data-bind-blur="documentTitle" data-id="${d.id}" value="${esc(d.title)}" ${canEdit ? "" : "readonly"} style="font-size:13.5px;font-weight:700;flex:1" />
-        ${canManage ? `<div class="btn btn-icon btn-ghost" data-act="removeDocument" data-id="${d.id}" style="flex:none"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
-      </div>
-      ${imageSlot("doc-" + d.id, "上傳圖片（例如票券 QRCode）", { style: "width:100%;height:140px", radius: 8, fit: "contain" })}
-      <textarea class="input" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 3)}" style="font-size:12.5px;line-height:1.7;height:auto;margin-top:8px" placeholder="補充說明，例如 eSIM 設定步驟">${esc(d.note)}</textarea>
-    </div>`).join("");
+  const rows = items.map(d => {
+    const photoDisplay = imageSlot("doc-" + d.id, "上傳圖片", { style: "width:100%;height:90px", radius: 6 });
+    return `<div class="card card-bordered" style="padding:var(--space-3);gap:6px">
+        ${photoDisplay}
+        <input class="input input-plain" data-bind-blur="documentTitle" data-id="${d.id}" value="${esc(d.title)}" ${canEdit ? "" : "readonly"} style="font-size:13.5px;font-weight:700" />
+        <textarea class="input input-plain" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 2)}" style="font-size:12px;line-height:1.6;height:auto;opacity:.8" placeholder="補充說明">${esc(d.note)}</textarea>
+        ${canManage ? `<div style="display:flex;justify-content:flex-end"><div class="btn btn-icon btn-ghost" data-act="removeDocument" data-id="${d.id}"><i data-lucide="trash-2" style="width:13px;height:13px"></i></div></div>` : ""}
+      </div>`;
+  }).join("");
   return `<div class="card card-bordered" style="grid-area:docs">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:8px">
@@ -1219,9 +1273,7 @@ function renderDocumentsCard(trip) {
         </div>
         ${canManage ? `<div class="btn btn-ghost" data-act="addDocument" style="font-size:12px"><i data-lucide="plus" style="width:14px;height:14px"></i> 新增</div>` : ""}
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:10px">
-        ${rows || '<div style="opacity:.5;font-size:13px;grid-column:1/-1">尚無資料，可以放票券 QRCode、eSIM 設定說明等</div>'}
-      </div>
+      <div class="docs-grid">${rows || '<div style="opacity:.5;font-size:13px;grid-column:1/-1">尚無資料，可以放票券 QRCode、eSIM 設定說明等</div>'}</div>
     </div>`;
 }
 
@@ -1305,7 +1357,32 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
     </div>`;
 }
 
-/* 「我的清單」：每個人自己的待辦/行李清單，跟公版分開，不管編輯／檢視權限，選過身份就能勾選/新增/刪除自己的項目 */
+/* 「待辦」「行李清單」每個人各自獨立一份：第一次打開這個分頁時，用公版內容當起點自動複製一份給這個人，
+   之後不管編輯／檢視權限，各自勾選、新增、刪除都只影響自己的清單，互不影響 */
+function ensurePersonalChecklistSeeded() {
+  if (!state.currentUserId || state.viewOnlyMode) return;
+  const trip = findTrip();
+  const seeded = trip.checklistSeeded || {};
+  const mine = seeded[state.currentUserId] || {};
+  const sections = ["prep", "packing"].filter(section => !mine[section]);
+  if (!sections.length) return;
+  mutateTrip(t => {
+    const newItems = [];
+    sections.forEach(section => {
+      const template = t[section] || {};
+      Object.keys(template).forEach(cat => {
+        (template[cat] || []).forEach(c => {
+          newItems.push({ id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label: c.label, done: false });
+        });
+      });
+    });
+    const nextSeeded = { ...(t.checklistSeeded || {}) };
+    nextSeeded[state.currentUserId] = { ...(nextSeeded[state.currentUserId] || {}) };
+    sections.forEach(section => { nextSeeded[state.currentUserId][section] = true; });
+    return { ...t, personalChecklist: [...t.personalChecklist, ...newItems], checklistSeeded: nextSeeded };
+  });
+}
+/* 單一份「我的清單」卡片：不管編輯／檢視權限，只要選過身份就能勾選、新增、刪除，只影響自己的內容 */
 function renderPersonalChecklistCard(title, section, gridArea) {
   const trip = findTrip();
   const templateCats = section === "prep" ? PREP_CATS : PACKING_CATS;
@@ -1336,26 +1413,23 @@ function renderPersonalChecklistCard(title, section, gridArea) {
       </div>`;
   }).join("");
   return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div class="card-title" style="font-size:16px">${esc(title)}</div>
-        ${canEditMine ? `<div class="btn btn-ghost" data-act="copyTemplateToPersonal" data-section="${section}" style="font-size:11.5px;padding:4px 8px"><i data-lucide="copy" style="width:12px;height:12px"></i> 從公版複製</div>` : ""}
-      </div>
-      ${myItems.length ? groups : `<div style="font-size:12.5px;opacity:.5;padding:4px 2px">${canEditMine ? '還沒有自己的清單，點右上角「從公版複製」開始，或直接新增項目' : '尚無清單'}</div>`}
+      <div class="card-title" style="font-size:16px;margin-bottom:6px">${esc(title)}</div>
+      ${groups}
     </div>`;
 }
 
 function renderPrep(trip) {
   const canEdit = canEditGeneral();
+  ensurePersonalChecklistSeeded();
+  trip = findTrip();
   return `
   <div class="prep-grid">
-    ${renderChecklistCard("待辦（公版）", PREP_CATS, "prep", trip.prep, "togglePrepCheck", "prepLabel", "reorderPrep", "todo")}
+    ${renderPersonalChecklistCard("待辦", "prep", "todo")}
     <div class="card card-bordered" style="grid-area:notes">
       <div class="card-title" style="font-size:16px;margin-bottom:10px">注意事項</div>
       <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(trip.notes, 6)}" style="font-size:13px;line-height:1.85;height:auto" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
     </div>
-    ${renderChecklistCard("行李清單（公版）", PACKING_CATS, "packing", trip.packing, "togglePackingCheck", "packingLabel", "reorderPacking", "packing")}
-    ${renderPersonalChecklistCard("我的待辦", "prep", "mytodo")}
-    ${renderPersonalChecklistCard("我的行李清單", "packing", "mypacking")}
+    ${renderPersonalChecklistCard("行李清單", "packing", "packing")}
   </div>`;
 }
 
@@ -1449,6 +1523,7 @@ function renderItinerary(trip, day) {
     <div class="chip-row" style="margin-bottom:var(--space-3)">${dayChips}</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:var(--space-3)">
       <input class="input input-plain" data-bind-blur="dayTitle" value="${esc(day.title || "")}" ${canEdit ? "" : "readonly"} placeholder="為這天下個標題，例如：國際通" style="font-size:14px;font-weight:600;max-width:280px" />
+      ${canEdit && trip.days.length > 1 ? `<div class="btn btn-secondary" data-act="openSwapDayModal" style="font-size:12px;flex:none"><i data-lucide="repeat" style="width:13px;height:13px"></i> 跟別天互換</div>` : ""}
     </div>
     <div style="display:flex;align-items:center;margin-bottom:var(--space-4)">
       <div class="seg">
@@ -1563,8 +1638,20 @@ function renderBudget(trip) {
 function renderMemo(trip) {
   ensureFxRates();
   const filters = [{ id: "all", label: "全部" }, ...trip.memoTags.map(t => ({ id: t, label: t }))];
-  const filtersHtml = filters.map(f => `
-    <div class="tag" data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;background:${state.memoTagFilter === f.id ? "var(--color-accent)" : "var(--color-surface)"};color:${state.memoTagFilter === f.id ? "var(--color-bg)" : "var(--color-text)"}">${esc(f.label)}</div>`).join("");
+  const filtersHtml = filters.map(f => {
+    if (f.id === "all") {
+      return `<div class="tag" data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;background:${state.memoTagFilter === f.id ? "var(--color-accent)" : "var(--color-surface)"};color:${state.memoTagFilter === f.id ? "var(--color-bg)" : "var(--color-text)"}">${esc(f.label)}</div>`;
+    }
+    const active = state.memoTagFilter === f.id;
+    if (state.ui.editingMemoTag === f.id) {
+      return `<input class="input input-plain" data-bind-blur="memoTagName" data-id="${esc(f.id)}" value="${esc(f.id)}" autofocus style="font-size:13px;font-weight:600;padding:6px 10px;border-radius:var(--radius-sm);background:var(--color-surface);width:96px" />`;
+    }
+    return `<div class="tag" style="display:flex;align-items:center;gap:5px;padding:5px 6px 5px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;background:${active ? "var(--color-accent)" : "var(--color-surface)"};color:${active ? "var(--color-bg)" : "var(--color-text)"}">
+        <div data-act="selectMemoTagFilter" data-id="${esc(f.id)}" style="cursor:pointer">${esc(f.label)}</div>
+        <div data-act="startEditMemoTag" data-id="${esc(f.id)}" style="cursor:pointer;display:flex;opacity:.7"><i data-lucide="pencil" style="width:11px;height:11px"></i></div>
+        <div data-act="removeMemoTag" data-id="${esc(f.id)}" style="cursor:pointer;display:flex;opacity:.7"><i data-lucide="x" style="width:12px;height:12px"></i></div>
+      </div>`;
+  }).join("");
 
   const visible = trip.memoItems.filter(m => m.ownerId === state.currentUserId && (state.memoTagFilter === "all" || m.tag === state.memoTagFilter));
   const cardsHtml = visible.map((m, i) => {
@@ -1768,6 +1855,28 @@ function renderModals(trip) {
       </div>
     </div>`;
   }
+  if (state.ui.swapDayModalOpen) {
+    const otherDays = trip.days.filter(d => d.id !== state.activeDayId);
+    const rows = otherDays.map(d => `
+      <div data-act="swapDays" data-id="${d.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:var(--radius-sm);background:var(--color-surface)">
+        <div>
+          <div style="font-size:10.5px;opacity:.6">Day ${d.index} · ${esc(d.dateLabel)}</div>
+          <div style="font-size:13px;font-weight:600">${esc(d.title || "（未命名）")}</div>
+        </div>
+        <i data-lucide="repeat" style="width:14px;height:14px;opacity:.6"></i>
+      </div>`).join("");
+    html += `
+    <div class="dialog-backdrop" data-act="closeModal">
+      <div class="dialog" data-stop-click>
+        <div class="dialog-title">跟哪一天互換？</div>
+        <div style="font-size:12px;opacity:.6;margin-bottom:6px">會把兩天的標題和行程項目整組交換，日期本身不會變動</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${rows || '<div style="opacity:.5;font-size:13px">沒有其他天可以互換</div>'}</div>
+        <div class="dialog-actions">
+          <div class="btn btn-secondary" data-act="closeModal">取消</div>
+        </div>
+      </div>
+    </div>`;
+  }
   if (state.ui.lightboxSrc) {
     html += `
     <div class="dialog-backdrop lightbox-backdrop" data-act="closeLightbox" style="z-index:200;background:color-mix(in srgb, black 82%, transparent);padding:var(--space-4)">
@@ -1920,6 +2029,8 @@ function initEvents() {
       case "reorderBudget": reorderViaChevron("budget", actEl); break;
       case "reorderMemo": reorderMemoViaChevron(actEl); break;
       case "selectDay": actions.selectDay(id); break;
+      case "openSwapDayModal": actions.openSwapDayModal(); break;
+      case "swapDays": actions.swapDays(id); break;
       case "setFilter": actions.setFilter(id); break;
       case "openAddItem": actions.openAddItem(); break;
       case "openEditItem": {
@@ -1989,6 +2100,8 @@ function initEvents() {
       case "toggleBudgetPayer": actions.toggleBudgetPayer(id, actEl.getAttribute("data-person")); break;
       case "selectMemoTagFilter": actions.selectMemoTagFilter(id); break;
       case "addMemoTag": actions.addMemoTag(); break;
+      case "startEditMemoTag": actions.startEditMemoTag(id); break;
+      case "removeMemoTag": actions.removeMemoTag(id); break;
       case "openAddMemo": actions.openAddMemo(); break;
       case "openEditMemo": {
         const trip = findTrip();
@@ -2192,6 +2305,7 @@ function handleFieldCommit(e) {
     case "personalChecklistLabel": actions.setPersonalChecklistLabel(id, val); break;
     case "documentTitle": actions.setDocumentTitle(id, val); break;
     case "documentNote": actions.setDocumentNote(id, val); break;
+    case "memoTagName": actions.saveMemoTag(id, val); break;
     case "dayTitle": actions.setDayTitle(state.activeDayId, val); break;
     case "budgetLabel": actions.setBudgetLabel(id, val); break;
     case "budgetAmount": actions.setBudgetAmount(id, val); break;
