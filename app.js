@@ -498,9 +498,23 @@ const actions = {
       const end = isoToDate(next.dateEnd);
       if (start && end && end >= start) {
         const nights = Math.round((end - start) / 86400000);
-        next.dateRange = `${formatFullDate(start)} - ${formatFullDate(end)}（${nights + 1}天${nights}夜）`;
+        const totalDays = nights + 1;
+        next.dateRange = `${formatFullDate(start)} - ${formatFullDate(end)}（${totalDays}天${nights}夜）`;
         // 行程頁每一天的日期，跟著新的起始日期重新往後推算
-        next.days = t.days.map(d => ({ ...d, dateLabel: formatMonthDay(addDays(start, d.index - 1)) }));
+        let days = t.days.map(d => ({ ...d, dateLabel: formatMonthDay(addDays(start, d.index - 1)) }));
+        // 天數變多了：把缺少的天數補上（新的一天預設還沒有任何行程項目）
+        if (days.length < totalDays) {
+          for (let i = days.length + 1; i <= totalDays; i++) {
+            days.push({ id: uid("d"), index: i, dateLabel: formatMonthDay(addDays(start, i - 1)), title: "", items: [] });
+          }
+        }
+        // 天數變少了：只移除「還沒有任何行程項目、也沒下標題」的多餘天數，已經填好內容的天不會被刪掉
+        else if (days.length > totalDays) {
+          while (days.length > totalDays && days[days.length - 1].items.length === 0 && !days[days.length - 1].title) {
+            days.pop();
+          }
+        }
+        next.days = days;
         // 只有一筆住宿時，順便把住宿的日期區間跟晚數也一起更新（多筆住宿因為不確定怎麼拆晚數，維持原樣讓你手動調整）
         if (t.stays.length === 1) {
           next.stays = [{ ...t.stays[0], range: `${formatMonthDay(start)} - ${formatMonthDay(end)}`, nights }];
