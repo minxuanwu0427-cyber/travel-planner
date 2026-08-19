@@ -188,12 +188,12 @@ textarea.input { min-height: 90px; resize: vertical; }
 .overview-grid {
   display: grid; gap: var(--space-3); margin-bottom: var(--space-3); align-items: start;
   grid-template-columns: 1fr 1fr;
-  grid-template-areas: "flight stay" "route stay";
+  grid-template-areas: "flight stay" "route stay" "docs docs";
 }
 .prep-grid {
   display: grid; gap: var(--space-3); align-items: start;
   grid-template-columns: 1fr 1fr;
-  grid-template-areas: "todo packing" "notes packing";
+  grid-template-areas: "todo packing" "notes packing" "mytodo mypacking";
 }
 .memo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
 
@@ -257,8 +257,8 @@ textarea.input { min-height: 90px; resize: vertical; }
 
   /* 手機版：改變卡片顯示順序（總覽把旅行路線移到最下方、行前準備把注意事項移到最下方），
      desktop 的 grid-template-areas 維持不變 */
-  .overview-grid { grid-template-columns: 1fr; grid-template-areas: "flight" "stay" "route"; }
-  .prep-grid { grid-template-columns: 1fr; grid-template-areas: "todo" "packing" "notes"; }
+  .overview-grid { grid-template-columns: 1fr; grid-template-areas: "flight" "stay" "route" "docs"; }
+  .prep-grid { grid-template-columns: 1fr; grid-template-areas: "todo" "packing" "notes" "mytodo" "mypacking"; }
 }
 
 @media (min-width: 641px) {
