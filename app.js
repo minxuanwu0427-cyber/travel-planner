@@ -211,80 +211,61 @@ function initialData() {
   ];
 }
 
-function defaultState() {
+function defaultUiState() {
   return {
-    trips: initialData(),
-    activeTripId: "okinawa",
-    activeDayId: "ok-d1",
-    activeSectionTab: "overview",
-    itineraryFilter: "all",
-    memoTagFilter: "all",
-    currentUserId: "p1",
-    collaborators: [
-      { id: "p1", name: "小美", initial: "美", permission: "編輯", colorIdx: 0, isPrimaryEditor: true },
-      { id: "p2", name: "阿傑", initial: "傑", permission: "編輯", colorIdx: 1 },
-      { id: "p3", name: "Lin", initial: "L", permission: "檢視", colorIdx: 2 }
-    ],
-    images: Object.assign({}, (window.DEFAULT_IMAGES || {})),
-    ui: {
-      editingCollabId: null, editCollabName: "",
-      itemModalOpen: false, budgetModalOpen: false, memoModalOpen: false, shareModalOpen: false, identityModalOpen: false,
-      editingItemId: null,
-      formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
-      budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [],
-      memoFormTag: "", memoFormName: "", memoFormPrice: "", memoFormCurrency: "TWD", memoFormId: null,
-      newGuestName: "",
-      isEditingTripName: false, tripNameDraft: "",
-      collabMenuOpen: false,
-      expandedItemIds: [],
-      lightboxSrc: null,
-      expandedGroups: {},
-      draggingItemId: null
-    }
+    editingCollabId: null, editCollabName: "",
+    itemModalOpen: false, budgetModalOpen: false, memoModalOpen: false, shareModalOpen: false, identityModalOpen: false,
+    editingItemId: null,
+    formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
+    budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [],
+    memoFormTag: "", memoFormName: "", memoFormPrice: "", memoFormCurrency: "TWD", memoFormId: null,
+    newGuestName: "",
+    isEditingTripName: false, tripNameDraft: "",
+    collabMenuOpen: false,
+    expandedItemIds: [],
+    lightboxSrc: null,
+    expandedGroups: {},
+    draggingItemId: null,
+    connectionError: false
+  };
+}
+function defaultCollaborators() {
+  return [
+    { id: "p1", name: "小美", initial: "美", permission: "編輯", colorIdx: 0, isPrimaryEditor: true },
+    { id: "p2", name: "阿傑", initial: "傑", permission: "編輯", colorIdx: 1 },
+    { id: "p3", name: "Lin", initial: "L", permission: "檢視", colorIdx: 2 }
+  ];
+}
+/* 補齊 Firestore 上可能缺漏的欄位（例如舊資料沒有 currency / payerIds），避免畫面壞掉 */
+function normalizeTrip(trip, collaborators) {
+  return {
+    ...trip,
+    budget: (trip.budget || []).map(b => ({
+      ...b,
+      currency: b.currency || "TWD",
+      payerIds: b.payerIds || (b.payerId ? [b.payerId] : (collaborators || []).map(p => p.id))
+    })),
+    memoItems: (trip.memoItems || []).map(m => ({ ...m, currency: m.currency || "TWD" }))
   };
 }
 
 /* ---------------------------------------------------------------------- */
-/* 狀態管理 / 儲存                                                          */
+/* 狀態管理（Firestore 為單一資料來源，即時同步給所有旅伴）                    */
 /* ---------------------------------------------------------------------- */
-let state = loadState();
+let state = {
+  trips: [],
+  activeTripId: null,
+  activeDayId: null,
+  activeSectionTab: "overview",
+  itineraryFilter: "all",
+  memoTagFilter: "all",
+  currentUserId: null,
+  collaborators: [],
+  images: {},
+  fx: null,
+  ui: defaultUiState()
+};
 
-function migrateState(s) {
-  // 舊資料可能沒有「主編輯者」欄位 —— 沒有的話補上，避免所有人都失去新增/刪除權限
-  if (!s.collaborators.some(p => p.isPrimaryEditor)) {
-    if (s.collaborators[0]) s.collaborators[0].isPrimaryEditor = true;
-  }
-  // 舊的預算 / 備忘錄項目可能沒有 currency / payerIds（改版前用的是單一 payerId）—— 補齊避免顯示壞掉
-  s.trips = s.trips.map(t => ({
-    ...t,
-    budget: (t.budget || []).map(b => {
-      const currency = b.currency || "TWD";
-      const payerIds = b.payerIds || (b.payerId ? [b.payerId] : s.collaborators.map(p => p.id));
-      return { ...b, currency, payerIds };
-    }),
-    memoItems: (t.memoItems || []).map(m => ({ ...m, currency: m.currency || "TWD" }))
-  }));
-  return s;
-}
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const d = defaultState();
-      // merge saved data with defaults (keeps forward-compat with new fields)
-      return migrateState(Object.assign(d, parsed, { ui: d.ui }));
-    }
-  } catch (e) { /* ignore corrupt storage */ }
-  return migrateState(defaultState());
-}
-function persist() {
-  try {
-    const { trips, activeTripId, activeDayId, collaborators, currentUserId, images } = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ trips, activeTripId, activeDayId, collaborators, currentUserId, images }));
-  } catch (e) { /* storage full or unavailable — data stays in-memory */ }
-}
 function loadIdentityMap() {
   try { return JSON.parse(localStorage.getItem(IDENTITY_KEY) || "{}"); } catch (e) { return {}; }
 }
@@ -346,7 +327,21 @@ function convertedTextForItem(item, trip) {
 
 function findTrip() { return state.trips.find(t => t.id === state.activeTripId); }
 function findDay() { const trip = findTrip(); return trip.days.find(d => d.id === state.activeDayId); }
-function mutateTrip(fn) { state.trips = state.trips.map(t => t.id === state.activeTripId ? fn(t) : t); }
+function mutateTrip(fn) {
+  let updated = null;
+  state.trips = state.trips.map(t => {
+    if (t.id !== state.activeTripId) return t;
+    updated = fn(t);
+    return updated;
+  });
+  if (updated) {
+    const { id, ...data } = updated;
+    db.collection("trips").doc(state.activeTripId).set(data).catch(err => console.error("同步到雲端失敗", err));
+  }
+}
+function saveCollaborators() {
+  db.collection("meta").doc("shared").set({ collaborators: state.collaborators }).catch(err => console.error("同步旅伴名單失敗", err));
+}
 function canEditGeneral() {
   const p = state.collaborators.find(p => p.id === state.currentUserId);
   return !p || p.permission === "編輯";
@@ -357,8 +352,7 @@ function isPrimaryEditor() {
 }
 
 let rerenderScheduled = false;
-function render(skipPersist) {
-  if (!skipPersist) persist();
+function render() {
   if (rerenderScheduled) return;
   rerenderScheduled = true;
   requestAnimationFrame(() => {
@@ -379,6 +373,7 @@ const actions = {
     state.activeDayId = trip.days[0] ? trip.days[0].id : null;
     state.activeSectionTab = state.activeSectionTab; // keep tab
     if (uidVal && state.collaborators.some(p => p.id === uidVal)) state.currentUserId = uidVal;
+    subscribeToImages(tripId);
     render();
   },
   selectSection(id) { state.activeSectionTab = id; render(); },
@@ -393,15 +388,18 @@ const actions = {
     const id = uid("p");
     state.collaborators.push({ id, name: n, initial: n[0], permission: "檢視", colorIdx: state.collaborators.length });
     state.ui.editingCollabId = id; state.ui.editCollabName = n;
+    saveCollaborators();
     render();
   },
   removeCollaborator(id) {
     state.collaborators = state.collaborators.filter(p => p.id !== id);
     if (state.currentUserId === id) state.currentUserId = state.collaborators[0] ? state.collaborators[0].id : null;
+    saveCollaborators();
     render();
   },
   togglePermission(id) {
     state.collaborators = state.collaborators.map(p => p.id === id ? { ...p, permission: p.permission === "編輯" ? "檢視" : "編輯" } : p);
+    saveCollaborators();
     render();
   },
   startEditCollab(id) {
@@ -414,6 +412,7 @@ const actions = {
     const name = (val != null ? val : state.ui.editCollabName).trim();
     state.collaborators = state.collaborators.map(p => p.id === id ? { ...p, name: name || p.name, initial: (name || p.name)[0] } : p);
     state.ui.editingCollabId = null;
+    saveCollaborators();
     render();
   },
 
@@ -643,11 +642,18 @@ const actions = {
     if (!name) { state.ui.identityModalOpen = false; render(true); return; }
     const id = uid("p");
     state.collaborators.push({ id, name, initial: name[0], permission: "編輯", colorIdx: state.collaborators.length });
+    saveCollaborators();
     actions.chooseIdentity(id);
   },
 
-  setImage(slotId, dataUrl) { state.images[slotId] = dataUrl; render(); },
-  removeImage(slotId) { delete state.images[slotId]; render(); }
+  setImage(slotId, dataUrl) {
+    state.images[slotId] = dataUrl; render();
+    db.collection("trips").doc(state.activeTripId).collection("images").doc(slotId).set({ data: dataUrl }).catch(err => console.error("照片同步失敗", err));
+  },
+  removeImage(slotId) {
+    delete state.images[slotId]; render();
+    db.collection("trips").doc(state.activeTripId).collection("images").doc(slotId).delete().catch(err => console.error("刪除照片失敗", err));
+  }
 };
 
 /* ---------------------------------------------------------------------- */
@@ -1600,12 +1606,115 @@ function handleFieldCommit(e) {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Boot                                                                     */
+/* Boot（等匿名登入完成 → 需要的話寫入初始範例資料 → 訂閱即時同步）              */
 /* ---------------------------------------------------------------------- */
-document.addEventListener("DOMContentLoaded", () => {
+let unsubTrips = null;
+let unsubImages = null;
+let imagesTripId = null;
+let _collabLoaded = false, _tripsLoaded = false, _firstRendered = false;
+
+function afterInitialLoad() {
+  if (_firstRendered) { render(); return; }
+  if (!_collabLoaded || !_tripsLoaded) return;
+  _firstRendered = true;
   const map = loadIdentityMap();
   const uidVal = map[state.activeTripId];
   if (uidVal && state.collaborators.some(p => p.id === uidVal)) state.currentUserId = uidVal;
+  else if (state.collaborators[0]) state.currentUserId = state.collaborators[0].id;
+  subscribeToImages(state.activeTripId);
   initEvents();
   doRender();
+}
+
+function subscribeToCollaborators() {
+  db.collection("meta").doc("shared").onSnapshot(doc => {
+    state.collaborators = doc.exists ? (doc.data().collaborators || []) : [];
+    _collabLoaded = true;
+    afterInitialLoad();
+  }, err => {
+    console.error("讀取旅伴名單失敗", err);
+    renderConnectionError();
+  });
+}
+
+function subscribeToTrips() {
+  unsubTrips = db.collection("trips").orderBy("createdAt").onSnapshot(snap => {
+    const collaborators = state.collaborators;
+    state.trips = snap.docs.map(d => normalizeTrip({ id: d.id, ...d.data() }, collaborators));
+    if (!state.trips.some(t => t.id === state.activeTripId) && state.trips[0]) {
+      // 如果網址帶了分享連結（#trip=xxx）且該行程存在，直接打開那個行程
+      const hashMatch = location.hash.match(/#trip=([^&]+)/);
+      const linkedTrip = hashMatch && state.trips.find(t => t.id === hashMatch[1]);
+      const target = linkedTrip || state.trips[0];
+      state.activeTripId = target.id;
+      state.activeDayId = target.days[0] ? target.days[0].id : null;
+    }
+    _tripsLoaded = true;
+    afterInitialLoad();
+  }, err => {
+    console.error("讀取行程資料失敗", err);
+    renderConnectionError();
+  });
+}
+
+function subscribeToImages(tripId) {
+  if (!tripId || (imagesTripId === tripId && unsubImages)) return;
+  if (unsubImages) unsubImages();
+  imagesTripId = tripId;
+  state.images = {};
+  unsubImages = db.collection("trips").doc(tripId).collection("images").onSnapshot(snap => {
+    const imgs = {};
+    snap.forEach(d => { imgs[d.id] = d.data().data; });
+    state.images = imgs;
+    render();
+  }, err => console.error("讀取照片失敗", err));
+}
+
+/* 全新的 Firestore 資料庫（第一次使用）就把範例行程 + 旅伴名單 + 範例照片寫進去 */
+async function ensureSeedData() {
+  const snap = await db.collection("trips").limit(1).get();
+  if (!snap.empty) return; // 已經有資料了，不重複寫入
+  const trips = initialData();
+  const batch = db.batch();
+  trips.forEach((trip, i) => {
+    const { id, ...data } = trip;
+    batch.set(db.collection("trips").doc(id), { ...data, createdAt: i });
+  });
+  batch.set(db.collection("meta").doc("shared"), { collaborators: defaultCollaborators() });
+  await batch.commit();
+  const defaultImages = window.DEFAULT_IMAGES || {};
+  for (const slotId of Object.keys(defaultImages)) {
+    // slot 命名慣例是「cover-{tripId}」或「route-map-{tripId}」，從 key 反推該圖片屬於哪個行程
+    const owner = trips.find(t => slotId === `cover-${t.id}` || slotId === `route-map-${t.id}`);
+    const targetTripId = owner ? owner.id : trips[0].id;
+    await db.collection("trips").doc(targetTripId).collection("images").doc(slotId).set({ data: defaultImages[slotId] });
+  }
+}
+
+function renderConnectionError() {
+  if (_firstRendered) return;
+  const root = document.getElementById("app");
+  root.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:14px;padding:24px;text-align:center;font-family:'Figtree',system-ui,sans-serif;color:var(--color-text)">
+      <div style="font-size:32px">📡</div>
+      <div style="font-size:15px;font-weight:700">無法連線到雲端資料庫</div>
+      <div style="font-size:13px;opacity:.7;max-width:320px;line-height:1.6">請確認網路連線後重新整理頁面。如果問題持續發生，可能是資料庫設定有誤，請聯絡管理者確認。</div>
+      <div class="btn btn-accent-outline" onclick="location.reload()" style="cursor:pointer">重新整理</div>
+    </div>`;
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await window.authReady;
+  } catch (e) {
+    renderConnectionError();
+    return;
+  }
+  try {
+    await ensureSeedData();
+  } catch (e) {
+    console.error("初始資料寫入失敗", e);
+  }
+  subscribeToCollaborators();
+  subscribeToTrips();
 });
