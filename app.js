@@ -476,16 +476,15 @@ function isPrimaryEditor() {
   const p = state.collaborators.find(p => p.id === state.currentUserId);
   return !!(p && p.isPrimaryEditor);
 }
-/* 預算項目的編輯／刪除權限：「個人」分類的項目只有本人能改，不管他原本是編輯者還是檢視者；
-   其他分類維持原本規則（編輯者可改內容，只有主編輯者能新增/刪除） */
+/* 預算項目的編輯／刪除權限：「個人」分類的項目不受「檢視模式」影響，只認是不是本人的項目——
+   因為這是自己的私人記錄，就算切成檢視模式瀏覽，也應該還能記自己的帳；
+   其他分類維持原本規則（編輯者可改內容，只有主編輯者能新增/刪除，且受檢視模式限制） */
 function canEditBudgetItem(item) {
-  if (state.viewOnlyMode) return false;
   if (!state.currentUserId) return false;
   if (item.category === "個人") return item.ownerId === state.currentUserId;
   return canEditGeneral();
 }
 function canRemoveBudgetItem(item) {
-  if (state.viewOnlyMode) return false;
   if (!state.currentUserId) return false;
   if (item.category === "個人") return item.ownerId === state.currentUserId;
   return isPrimaryEditor();
@@ -699,49 +698,28 @@ const actions = {
     mutateTrip(t => ({ ...t, packing: { ...t.packing, [cat]: t.packing[cat].map(c => c.id === id ? { ...c, done: !c.done } : c) } }));
     render();
   },
-  /* 「我的清單」：每個人各自的待辦/行李清單，跟權限（編輯／檢視）無關，只要選過身份就能勾選、新增、刪除自己的項目 */
-  copyTemplateToPersonal(section) {
-    if (state.viewOnlyMode || !state.currentUserId) return;
-    const trip = findTrip();
-    const template = trip[section] || {};
-    const existingKeys = new Set(
-      trip.personalChecklist.filter(it => it.ownerId === state.currentUserId && it.section === section)
-        .map(it => it.category + "|" + it.label)
-    );
-    const newItems = [];
-    Object.keys(template).forEach(cat => {
-      (template[cat] || []).forEach(c => {
-        const key = cat + "|" + c.label;
-        if (!existingKeys.has(key)) newItems.push({ id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label: c.label, done: false });
-      });
-    });
-    if (!newItems.length) return;
-    mutateTrip(t => ({ ...t, personalChecklist: [...t.personalChecklist, ...newItems] }));
-    render(true);
-  },
+  /* 「我的清單」：每個人各自的待辦/行李清單，不受權限（編輯／檢視）或檢視模式影響——
+     這是自己的私人紀錄，就算切成檢視模式瀏覽，也應該還能勾自己的清單 */
   togglePersonalCheck(id) {
-    if (state.viewOnlyMode) return;
     const item = findTrip().personalChecklist.find(it => it.id === id);
     if (!item || item.ownerId !== state.currentUserId) return;
     mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => it.id === id ? { ...it, done: !it.done } : it) }));
     render();
   },
   setPersonalChecklistLabel(id, val) {
-    if (state.viewOnlyMode) return;
     const item = findTrip().personalChecklist.find(it => it.id === id);
     if (!item || item.ownerId !== state.currentUserId) return;
     mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => it.id === id ? { ...it, label: val } : it) }));
     render(true);
   },
   addPersonalChecklistItem(section, cat) {
-    if (state.viewOnlyMode || !state.currentUserId) return;
+    if (!state.currentUserId) return;
     const label = (window.prompt("新增項目名稱") || "").trim();
     if (!label) return;
     mutateTrip(t => ({ ...t, personalChecklist: [...t.personalChecklist, { id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label, done: false }] }));
     render();
   },
   removePersonalChecklistItem(id) {
-    if (state.viewOnlyMode) return;
     const item = findTrip().personalChecklist.find(it => it.id === id);
     if (!item || item.ownerId !== state.currentUserId) return;
     mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.filter(it => it.id !== id) }));
@@ -980,8 +958,8 @@ const actions = {
     render(true);
   },
   openAddPersonalBudget() {
-    // 「個人」分類任何人（不管編輯／檢視權限）都能新增自己的項目
-    if (state.viewOnlyMode || !state.currentUserId) return;
+    // 「個人」分類任何人（不管編輯／檢視權限，也不受檢視模式影響）都能新增自己的項目
+    if (!state.currentUserId) return;
     state.ui.budgetModalOpen = true; state.ui.editingBudgetId = null;
     state.ui.budgetFormCategory = "個人"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = "";
     state.ui.budgetFormCurrency = "TWD"; state.ui.budgetFormPayerIds = [state.currentUserId];
@@ -1008,7 +986,7 @@ const actions = {
         payerIds: isPersonal ? [existing.ownerId || state.currentUserId] : (u.budgetFormPayerIds && u.budgetFormPayerIds.length ? u.budgetFormPayerIds : b.payerIds)
       }) }));
     } else {
-      const allowed = isPersonal ? (!!state.currentUserId && !state.viewOnlyMode) : isPrimaryEditor();
+      const allowed = isPersonal ? !!state.currentUserId : isPrimaryEditor();
       if (!allowed) { u.budgetModalOpen = false; render(true); return; }
       mutateTrip(t => ({ ...t, budget: [...t.budget, {
         id: uid("b"), category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0,
@@ -1360,7 +1338,7 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
 /* 「待辦」「行李清單」每個人各自獨立一份：第一次打開這個分頁時，用公版內容當起點自動複製一份給這個人，
    之後不管編輯／檢視權限，各自勾選、新增、刪除都只影響自己的清單，互不影響 */
 function ensurePersonalChecklistSeeded() {
-  if (!state.currentUserId || state.viewOnlyMode) return;
+  if (!state.currentUserId) return;
   const trip = findTrip();
   // 用「這個人在這個分類底下是否已經有任何項目」來判斷要不要自動補公版內容進來（不是用另外存一個旗標），
   // 這樣就算同一個動作被觸發好幾次，也不會重複塞入，因為只要塞過一次、判斷條件就不成立了
@@ -1391,7 +1369,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   const templateCats = section === "prep" ? PREP_CATS : PACKING_CATS;
   const myItems = trip.personalChecklist.filter(it => it.ownerId === state.currentUserId && it.section === section);
   const usedCats = templateCats.concat(Array.from(new Set(myItems.map(it => it.category))).filter(c => !templateCats.includes(c)));
-  const canEditMine = !state.viewOnlyMode && !!state.currentUserId;
+  const canEditMine = !!state.currentUserId;
   const groups = usedCats.map((cat, i) => {
     const key = "personal:" + section + ":" + cat;
     const expanded = !!state.ui.expandedGroups[key];
@@ -1562,7 +1540,7 @@ function renderBudget(trip) {
   const myTotalLocal = convertToLocal(myTotalTWD, trip);
 
   const groupsHtml = BUDGET_CATS.map(cat => {
-    const items = trip.budget.filter(b => b.category === cat);
+    const items = trip.budget.filter(b => b.category === cat && (cat !== "個人" || b.ownerId === state.currentUserId));
     const isPersonalCat = cat === "個人";
     // 小計：只加總「我」是付款旅伴之一的項目（換算成台幣後加總），跟最上方合計邏輯一致
     const subtotalTWD = items.reduce((sum, b) => {
@@ -1574,11 +1552,7 @@ function renderBudget(trip) {
       const convertedText = convertedTextForItem(b, trip);
       const rowCanEdit = canEditBudgetItem(b);
       const rowCanRemove = canRemoveBudgetItem(b);
-      const owner = isPersonalCat ? state.collaborators.find(p => p.id === b.ownerId) : null;
-      const ownerTag = owner
-        ? avatar(owner.initial, PEOPLE_COLORS[owner.colorIdx % PEOPLE_COLORS.length], 20)
-        : "";
-      const payerRow = isPersonalCat ? ownerTag : state.collaborators.map(p => {
+      const payerRow = isPersonalCat ? "" : state.collaborators.map(p => {
         const active = (b.payerIds || []).includes(p.id);
         const color = PEOPLE_COLORS[p.colorIdx % PEOPLE_COLORS.length];
         return `<div data-act="${rowCanEdit ? "toggleBudgetPayer" : ""}" data-id="${b.id}" data-person="${p.id}" title="${esc(p.name)}${active ? "（需付款）" : ""}" style="cursor:${rowCanEdit ? "pointer" : "default"};width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex:none;color:${active ? "#fff" : "var(--color-neutral-400)"};background:${active ? color : "transparent"};border:1.5px solid ${active ? color : "var(--color-divider)"}">${esc(p.initial)}</div>`;
@@ -1605,10 +1579,10 @@ function renderBudget(trip) {
         </div>
       </div>`;
     }).join("");
-    const canAddPersonal = isPersonalCat && !state.viewOnlyMode && !!state.currentUserId;
+    const canAddPersonal = isPersonalCat && !!state.currentUserId;
     return `<div class="card card-bordered">
         <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--color-divider)">
-          <div class="card-title" style="font-size:11.5px;letter-spacing:.08em">${esc(cat)}${isPersonalCat ? '<span style="opacity:.6;font-weight:400;letter-spacing:normal"> · 各自新增/編輯自己的項目</span>' : ""}</div>
+          <div class="card-title" style="font-size:11.5px;letter-spacing:.08em">${esc(cat)}<span style="opacity:.6;font-weight:400;letter-spacing:normal"> · ${isPersonalCat ? "自行編輯項目，不會與旅伴同步" : "由主揪統一規劃"}</span></div>
           <div style="font-size:13px;color:var(--color-neutral-600);display:flex;align-items:baseline;gap:5px">小計 <span style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(subtotalTWD)}</span></div>
         </div>
         ${rows || '<div style="font-size:12.5px;opacity:.5;padding:4px 2px">尚無花費</div>'}
@@ -1691,9 +1665,7 @@ function renderMemo(trip) {
       ${filtersHtml}
       <div class="btn btn-ghost" data-act="addMemoTag" style="font-size:12.5px;flex:none;white-space:nowrap"><i data-lucide="tag" style="width:14px;height:14px"></i> 新增分類</div>
     </div>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:var(--space-4)">
-      <div class="btn btn-accent-outline" data-act="openAddMemo"><i data-lucide="plus" style="width:15px;height:15px"></i> 新增項目</div>
-    </div>
+    <div class="fab" data-act="openAddMemo" title="新增備忘項目"><i data-lucide="plus" style="width:24px;height:24px"></i></div>
     <div class="memo-grid">${cardsHtml || ""}</div>
     ${visible.length === 0 ? '<div style="padding:var(--space-6) 0;opacity:.6;font-size:13.5px">這個分類還沒有項目</div>' : ""}
     ${state.fx ? `<div style="text-align:center;margin-top:var(--space-4);font-size:11px;color:var(--color-neutral-400)">匯率資料來源：<a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" style="color:inherit">ExchangeRate-API</a></div>` : ""}`;
