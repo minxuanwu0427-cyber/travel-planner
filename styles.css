@@ -144,6 +144,12 @@ textarea.input { min-height: 90px; resize: vertical; }
 .cover-info { position: absolute; left: var(--space-6); bottom: var(--space-4); color: var(--color-bg); right: var(--space-6); }
 .cover-info h1 { color: var(--color-bg); margin-bottom: 4px; cursor: pointer; }
 .cover-info h6 { color: var(--color-accent-200); margin-bottom: 4px; }
+.date-picker-light {
+  font: inherit; font-size: 13px; color: var(--color-bg); background: transparent;
+  border: none; border-bottom: 1px solid color-mix(in srgb, var(--color-bg) 45%, transparent);
+  padding: 2px 0; cursor: pointer; color-scheme: dark;
+}
+.date-picker-light::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.85; cursor: pointer; }
 
 /* ---------- image slot ---------- */
 .image-slot { position: relative; background: var(--color-neutral-200); overflow: hidden; cursor: pointer; display: flex; align-items: center; justify-content: center; }
