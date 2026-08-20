@@ -812,8 +812,36 @@ const actions = {
     mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => it.id === id ? { ...it, bagTag: tag } : it) }));
     render(true);
   },
-  togglePackingViewMode() {
-    state.ui.packingViewMode = state.ui.packingViewMode === "tag" ? "category" : "tag";
+  setPackingViewMode(mode) {
+    state.ui.packingViewMode = mode;
+    render(true);
+  },
+  /* 清空自己這份清單、重新從目前最新公版套用一次 —— 用在公版更新過、但自己手上還是舊內容的情況 */
+  resetMyChecklist(section) {
+    if (!state.currentUserId) return;
+    const label = section === "prep" ? "待辦" : "行李清單";
+    if (!window.confirm(`確定要清空你自己的「${label}」，重新套用最新公版嗎？\n\n你目前已經勾選/自己新增的內容都會被清掉，換成公版最新的項目。`)) return;
+    const trip = findTrip();
+    const template = trip[section] || {};
+    const newItems = [];
+    Object.keys(template).forEach(cat => {
+      (template[cat] || []).forEach(c => {
+        newItems.push({ id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label: c.label, done: false, bagTag: c.bagTag || null, locked: !!c.locked });
+      });
+    });
+    mutateTrip(t => ({
+      ...t,
+      personalChecklist: [...t.personalChecklist.filter(it => !(it.ownerId === state.currentUserId && it.section === section)), ...newItems]
+    }));
+    render(true);
+  },
+  /* 出國期間換飯店收行李時，可以一鍵把自己的行李清單全部取消勾選，重新確認一次 */
+  uncheckAllPacking() {
+    if (!state.currentUserId) return;
+    const hasChecked = findTrip().personalChecklist.some(it => it.ownerId === state.currentUserId && it.section === "packing" && it.done);
+    if (!hasChecked) return;
+    if (!window.confirm("確定要把行李清單全部取消勾選嗎？方便你重新收拾行李、再確認一次。")) return;
+    mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => (it.ownerId === state.currentUserId && it.section === "packing") ? { ...it, done: false } : it) }));
     render(true);
   },
   removePersonalChecklistItem(id) {
@@ -1591,15 +1619,21 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   }).join("");
 
   const groups = viewMode === "tag" ? groupsByTag : groupsByCategory;
-  const viewToggleBtn = isPacking ? `<div class="btn btn-secondary" data-act="togglePackingViewMode" style="font-size:11px;padding:4px 8px;white-space:nowrap">${viewMode === "tag" ? "🔄 依原分類" : "🔄 依隨身/登機/託運"}</div>` : "";
+  // toggle switch 樣式：一個藥丸型軌道，兩邊各佔一半，選到哪邊哪邊就用主色填滿、滑塊效果用位移做出來
+  const viewToggle = isPacking ? `
+    <div style="position:relative;display:flex;background:var(--color-surface);border-radius:999px;padding:2px;width:180px;flex:none">
+      <div style="position:absolute;top:2px;bottom:2px;left:${viewMode === "category" ? "2px" : "50%"};width:calc(50% - 2px);background:var(--color-accent);border-radius:999px;transition:left .15s ease"></div>
+      <div data-act="setPackingViewMode" data-mode="category" style="position:relative;flex:1;text-align:center;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer;color:${viewMode === "category" ? "var(--color-bg)" : "var(--color-neutral-500)"}">原分類</div>
+      <div data-act="setPackingViewMode" data-mode="tag" style="position:relative;flex:1;text-align:center;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer;color:${viewMode === "tag" ? "var(--color-bg)" : "var(--color-neutral-500)"}">隨身/登機/託運</div>
+    </div>` : "";
+  const uncheckAllBtn = isPacking ? `<div class="btn btn-icon btn-ghost" data-act="uncheckAllPacking" title="全部取消勾選，重新收拾行李"><i data-lucide="rotate-ccw" style="width:15px;height:15px"></i></div>` : "";
   return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${isPacking ? "8px" : "6px"};gap:6px">
         <div class="card-title" style="font-size:16px">${esc(title)}</div>
-        <div style="display:flex;align-items:center;gap:4px;flex:none">
-          ${viewToggleBtn}
-          ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
-        </div>
+        ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
       </div>
+      ${isPacking ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">${viewToggle}${uncheckAllBtn}</div>` : ""}
+      ${editMode && canEditMine ? `<div class="btn btn-ghost" data-act="resetMyChecklist" data-section="${section}" style="font-size:11px;opacity:.7;margin-bottom:8px"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 清空重新套用最新公版</div>` : ""}
       ${groups}
     </div>`;
 }
@@ -2270,7 +2304,9 @@ function initEvents() {
       case "addPersonalChecklistItem": actions.addPersonalChecklistItem(actEl.getAttribute("data-section"), actEl.getAttribute("data-cat")); break;
       case "removePersonalChecklistItem": actions.removePersonalChecklistItem(id); break;
       case "toggleChecklistEditMode": actions.toggleChecklistEditMode(actEl.getAttribute("data-section")); break;
-      case "togglePackingViewMode": actions.togglePackingViewMode(); break;
+      case "setPackingViewMode": actions.setPackingViewMode(actEl.getAttribute("data-mode")); break;
+      case "resetMyChecklist": actions.resetMyChecklist(actEl.getAttribute("data-section")); break;
+      case "uncheckAllPacking": actions.uncheckAllPacking(); break;
       case "setPersonalItemBagTag": actions.setPersonalItemBagTag(id, actEl.getAttribute("data-tag")); break;
       case "resetPrepTemplate": actions.resetPrepTemplate(); break;
       case "addDocument": actions.addDocument(); break;
