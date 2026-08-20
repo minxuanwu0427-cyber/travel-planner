@@ -31,9 +31,51 @@ function categoryIconSvg(iconName, size, color) {
 }
 const CATEGORY_OPTIONS = ["交通", "景點", "餐飲", "購物", "住宿", "其他"];
 const BUDGET_CATS = ["個人", "票券", "交通", "住宿", "其他"];
-const PREP_CATS = ["票券", "保險", "其他"];
+const PREP_CATS = ["票券", "保險&金融相關", "其他"];
 const PACKING_CATS = ["重要物品", "3C", "衣物", "個人用品", "藥品", "其他"];
-const CATEGORY_EMOJI = { "票券": "🎫", "保險": "🛡️", "重要物品": "🔑", "3C": "🔌", "衣物": "👕", "個人用品": "🧴", "藥品": "💊", "其他": "📦" };
+const BAG_TAGS = ["隨身", "登機箱", "託運"];
+/* 行前準備的公版內容：新建立行程時當作起始清單，也是「重置成最新公版」功能會套用的內容 */
+function buildDefaultPrepTemplate() {
+  const mk = labels => labels.map(label => ({ id: uid("t"), label, done: false }));
+  return {
+    "票券": mk(["交通票", "遊樂園/水族館/展覽門票", "古城/景點門票"]),
+    "保險&金融相關": mk(["旅平險投保", "自駕保險確認", "海外刷卡額度調整", "外幣現鈔準備"]),
+    "其他": mk(["護照效期確認", "駕照譯本申請", "簽證/數位入境", "航班/住宿/租車資訊", "體驗行程預約", "餐廳預約"])
+  };
+}
+function buildDefaultPackingTemplate() {
+  // items: [標籤文字, 隨身/登機箱/託運, 是否鎖定（true 時不管誰操作都不能被改成別的標籤）]
+  const mk = items => items.map(([label, bagTag, locked]) => ({ id: uid("t"), label, done: false, bagTag: bagTag || null, locked: !!locked }));
+  return {
+    "重要物品": mk([
+      ["機票/護照", "隨身"], ["身分證件", "隨身"], ["駕照/譯本/交通卡", "隨身"], ["信用卡/現金", "隨身"], ["鑰匙", "隨身"]
+    ]),
+    "3C": mk([
+      ["耳機", "隨身"], ["SIM卡/eSIM", "隨身"], ["手機", "隨身"], ["筆電/平板", "隨身"], ["行動電源", "隨身", true], ["充電器/萬國插頭", "登機箱"]
+    ]),
+    "衣物": mk([
+      ["外衣", "託運"], ["內衣褲/襪子", "託運"], ["配件(帽子/圍巾/絲巾)", "託運"], ["睡衣", "託運"], ["泳衣", "託運"], ["鞋子/拖鞋", "託運"], ["髒衣袋", "託運"]
+    ]),
+    "個人用品": mk([
+      ["衛生紙/濕紙巾/衛生棉", "隨身"], ["外套", "隨身"], ["墨鏡", "登機箱"], ["隱形眼鏡/眼鏡", "登機箱"], ["卸妝/洗面乳", "託運"], ["牙刷/牙膏", "託運"], ["刮鬍刀/除毛刀", "託運"], ["保養品", "託運"], ["化妝包/防曬乳", "託運"], ["離子夾/髮品", "託運"]
+    ]),
+    "藥品": mk([
+      ["慢性病處方用藥", "隨身"], ["暈機藥/暈船藥", "隨身"], ["過敏藥", "隨身"], ["胃藥", "登機箱"], ["止痛藥", "登機箱"]
+    ]),
+    "其他": mk([
+      ["口罩", "隨身"], ["摺疊雨傘", "登機箱"], ["行李秤", "登機箱"], ["頸枕", "登機箱"], ["眼罩/耳塞", "託運"], ["當地伴手禮", "託運"]
+    ])
+  };
+}
+const DEFAULT_PREP_NOTES = `需查詢規定⚠️：高壓氣罐、電池類產品、大量藥品、嬰兒食品、尖銳物、打火機
+嚴格禁止🚫：易燃物、新鮮水果、植物/土壤、生鮮肉類及禽蛋類、含肉加工食品(肉鬆、香腸、肉乾等)、部分特定保久乳和奶粉
+
+僅能託運：液體超過100ml、酒類、直傘
+僅能隨身：行動電源、手持電風扇、電池
+隨身液體規定：容器每個須小於100ml、總量1公升內，限用20×20公分透明夾鏈袋，每人限帶一袋上機`;
+const CATEGORY_EMOJI = { "票券": "🎫", "保險&金融相關": "🛡️", "重要物品": "🔑", "3C": "🔌", "衣物": "👕", "個人用品": "🧴", "藥品": "💊", "其他": "📦" };
+/* 部分分類名稱後面要帶一小段提醒文字（例如藥品類別的用量提醒） */
+const CATEGORY_NOTE = { "藥品": "※適量自用、保留原包裝" };
 /* 莫蘭迪色系（低飽和霧感色調），給每位旅伴的頭像底色用 */
 const PEOPLE_COLORS = ["#A98F82", "#8FA593", "#8C9CB0", "#B79A8E", "#9C93A6", "#AD9E7E", "#7F9E97", "#B08D8B"];
 const MEMO_TAG_CLASSES = ["tag-accent", "tag-accent-2", "tag-neutral", "tag-outline"];
@@ -238,7 +280,7 @@ function initialData() {
       },
       prep: {
         "票券": [{ id: "t1", label: "美麗海水族館電子票", done: true }, { id: "t2", label: "首里城門票", done: false }],
-        "保險": [{ id: "s1", label: "旅平險投保", done: false }],
+        "保險&金融相關": [{ id: "s1", label: "旅平險投保", done: false }],
         "其他": [{ id: "o1", label: "租車預約確認", done: false }, { id: "o2", label: "Wi-Fi 機預訂", done: true }]
       },
       budget: [
@@ -282,7 +324,7 @@ function initialData() {
       },
       prep: {
         "票券": [{ id: "t3", label: "海雲台藍線公園票", done: false }],
-        "保險": [{ id: "s2", label: "旅平險投保", done: true }],
+        "保險&金融相關": [{ id: "s2", label: "旅平險投保", done: true }],
         "其他": [{ id: "o3", label: "K-ETA 申請", done: true }]
       },
       budget: [
@@ -318,6 +360,7 @@ function defaultUiState() {
     editingMemoTag: null,
     swapDayModalOpen: false,
     checklistEditMode: {},
+    packingViewMode: "category",
     moveItemId: null
   };
 }
@@ -595,9 +638,9 @@ const actions = {
     const newTrip = {
       name: u.newTripName.trim(), country: u.newTripCountry.trim(), flag: u.newTripFlag.trim() || "📍",
       dateRange, dateStart: u.newTripDateStart || "", dateEnd: u.newTripDateEnd || "",
-      flight: { out: "", back: "" }, stays: [], notes: "",
-      days, packing: { "重要物品": [], "3C": [], "衣物": [], "個人用品": [], "藥品": [], "其他": [] },
-      prep: { "票券": [], "保險": [], "其他": [] },
+      flight: { out: "", back: "" }, stays: [], notes: DEFAULT_PREP_NOTES,
+      days, packing: buildDefaultPackingTemplate(),
+      prep: buildDefaultPrepTemplate(),
       budget: [], memoTags: [], memoItems: [], personalChecklist: [], documents: [],
       collaborators, createdAt: Date.now()
     };
@@ -752,15 +795,26 @@ const actions = {
   setPersonalChecklistLabel(id, val) {
     const item = findTrip().personalChecklist.find(it => it.id === id);
     if (!item || item.ownerId !== state.currentUserId) return;
-    mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => it.id === id ? { ...it, label: val } : it) }));
+    mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => it.id === id ? applyPackingSafetyRule({ ...it, label: val }) : it) }));
     render(true);
   },
   addPersonalChecklistItem(section, cat) {
     if (!state.currentUserId) return;
     const label = (window.prompt("新增項目名稱") || "").trim();
     if (!label) return;
-    mutateTrip(t => ({ ...t, personalChecklist: [...t.personalChecklist, { id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label, done: false }] }));
+    const newItem = applyPackingSafetyRule({ id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label, done: false, bagTag: null, locked: false });
+    mutateTrip(t => ({ ...t, personalChecklist: [...t.personalChecklist, newItem] }));
     render();
+  },
+  setPersonalItemBagTag(id, tag) {
+    const item = findTrip().personalChecklist.find(it => it.id === id);
+    if (!item || item.ownerId !== state.currentUserId || item.locked) return;
+    mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => it.id === id ? { ...it, bagTag: tag } : it) }));
+    render(true);
+  },
+  togglePackingViewMode() {
+    state.ui.packingViewMode = state.ui.packingViewMode === "tag" ? "category" : "tag";
+    render(true);
   },
   removePersonalChecklistItem(id) {
     const item = findTrip().personalChecklist.find(it => it.id === id);
@@ -770,6 +824,12 @@ const actions = {
   },
   toggleChecklistEditMode(section) {
     state.ui.checklistEditMode = { ...state.ui.checklistEditMode, [section]: !state.ui.checklistEditMode[section] };
+    render(true);
+  },
+  resetPrepTemplate() {
+    if (!isPrimaryEditor()) return;
+    if (!window.confirm("確定要用最新公版覆蓋這個行程的「待辦」「行李清單」範本嗎？\n\n只會影響之後新加入、還沒建立過自己清單的旅伴；已經有自己清單的人不會被動到。")) return;
+    mutateTrip(t => ({ ...t, prep: buildDefaultPrepTemplate(), packing: buildDefaultPackingTemplate() }));
     render(true);
   },
 
@@ -1422,6 +1482,14 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
 /* 記住這次瀏覽階段已經「嘗試過」自動帶入公版的 使用者:分類 組合（不管公版當時是不是空的都算嘗試過），
    避免公版剛好沒有任何項目時，判斷條件永遠成立、每次重新渲染都再觸發一次寫入，造成無限重新渲染 */
 const seededAttempts = new Set();
+/* 行李清單的安全規則：只要項目內容打的是「行動電源」，一律鎖定標籤為「隨身」，
+   不管是公版帶進來的、還是後來自己改名/新增的，都不能被改成別的標籤（避免不小心設定成登機箱/託運） */
+function applyPackingSafetyRule(item) {
+  if (item && item.section === "packing" && (item.label || "").trim() === "行動電源") {
+    return { ...item, bagTag: "隨身", locked: true };
+  }
+  return item;
+}
 function ensurePersonalChecklistSeeded() {
   if (!state.currentUserId) return;
   const trip = findTrip();
@@ -1441,7 +1509,7 @@ function ensurePersonalChecklistSeeded() {
       const template = t[section] || {};
       Object.keys(template).forEach(cat => {
         (template[cat] || []).forEach(c => {
-          newItems.push({ id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label: c.label, done: false });
+          newItems.push({ id: uid("pc"), ownerId: state.currentUserId, section, category: cat, label: c.label, done: false, bagTag: c.bagTag || null, locked: !!c.locked });
         });
       });
     });
@@ -1450,6 +1518,35 @@ function ensurePersonalChecklistSeeded() {
   });
 }
 /* 單一份「我的清單」卡片：不管編輯／檢視權限，只要選過身份就能勾選、新增、刪除，只影響自己的內容 */
+/* 清單裡一列項目的渲染（打勾／文字／刪除按鈕），行前準備跟行李清單共用；
+   行李清單在編輯模式下額外顯示隨身/登機箱/託運的標籤選擇，鎖定的項目（例如行動電源）不能改標籤 */
+function renderChecklistRow(c, editMode, canEditMine, section) {
+  const checkbox = `<div style="width:14px;height:14px;border-radius:50%;border:1.5px solid ${c.done ? "var(--color-accent)" : "var(--color-divider)"};background:${c.done ? "var(--color-accent)" : "transparent"};flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-bg)">
+      ${c.done ? '<i data-lucide="check" style="width:8px;height:8px"></i>' : ""}
+    </div>`;
+  const isPacking = section === "packing";
+  const bagBadge = (!editMode && isPacking && c.bagTag) ? `<span style="font-size:10px;font-weight:700;color:var(--color-accent-700);background:var(--color-surface);border:1px solid var(--color-divider);border-radius:4px;padding:1px 5px;flex:none;white-space:nowrap">${c.locked ? "🔒" : ""}${esc(c.bagTag)}</span>` : "";
+  if (!editMode) {
+    return `<div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:${canEditMine ? "pointer" : "default"};display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:var(--radius-sm)">
+        ${checkbox}
+        <div style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1">${esc(c.label)}</div>
+        ${bagBadge}
+      </div>`;
+  }
+  const tagChips = isPacking ? `<div style="display:flex;align-items:center;gap:4px;margin-left:20px;margin-top:2px;flex-wrap:wrap">
+      ${c.locked
+        ? `<span style="font-size:10.5px;color:var(--color-neutral-500);display:flex;align-items:center;gap:3px"><i data-lucide="lock" style="width:10px;height:10px"></i> 隨身（鎖定，不能改）</span>`
+        : BAG_TAGS.map(tag => `<div data-act="setPersonalItemBagTag" data-id="${c.id}" data-tag="${tag}" style="cursor:pointer;font-size:10.5px;padding:2px 7px;border-radius:10px;border:1px solid ${c.bagTag === tag ? "var(--color-accent)" : "var(--color-divider)"};color:${c.bagTag === tag ? "var(--color-accent)" : "var(--color-neutral-500)"};font-weight:${c.bagTag === tag ? "700" : "400"}">${esc(tag)}</div>`).join("")}
+    </div>` : "";
+  return `<div style="padding:2px 0">
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:var(--radius-sm)">
+        <div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:pointer">${checkbox}</div>
+        <input class="input input-plain" data-bind-blur="personalChecklistLabel" data-id="${c.id}" value="${esc(c.label)}" style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1" />
+        <div class="btn btn-icon btn-ghost" data-act="removePersonalChecklistItem" data-id="${c.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>
+      </div>
+      ${tagChips}
+    </div>`;
+}
 function renderPersonalChecklistCard(title, section, gridArea) {
   const trip = findTrip();
   const templateCats = section === "prep" ? PREP_CATS : PACKING_CATS;
@@ -1457,30 +1554,17 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   const usedCats = templateCats.concat(Array.from(new Set(myItems.map(it => it.category))).filter(c => !templateCats.includes(c)));
   const canEditMine = !!state.currentUserId;
   const editMode = canEditMine && !!state.ui.checklistEditMode[section];
-  const groups = usedCats.map((cat, i) => {
+  const isPacking = section === "packing";
+  const viewMode = isPacking ? state.ui.packingViewMode : "category";
+
+  const groupsByCategory = usedCats.map((cat, i) => {
     const key = "personal:" + section + ":" + cat;
     const expanded = !!state.ui.expandedGroups[key];
     const items = myItems.filter(it => it.category === cat);
-    const rows = items.map(c => {
-      const checkbox = `<div style="width:14px;height:14px;border-radius:50%;border:1.5px solid ${c.done ? "var(--color-accent)" : "var(--color-divider)"};background:${c.done ? "var(--color-accent)" : "transparent"};flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-bg)">
-          ${c.done ? '<i data-lucide="check" style="width:8px;height:8px"></i>' : ""}
-        </div>`;
-      if (!editMode) {
-        // 非編輯模式：整列都是勾選熱區，文字不能改，避免手滑點到打字欄位
-        return `<div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:${canEditMine ? "pointer" : "default"};display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:var(--radius-sm)">
-            ${checkbox}
-            <div style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1">${esc(c.label)}</div>
-          </div>`;
-      }
-      return `<div style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:var(--radius-sm)">
-        <div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:pointer">${checkbox}</div>
-        <input class="input input-plain" data-bind-blur="personalChecklistLabel" data-id="${c.id}" value="${esc(c.label)}" style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1" />
-        <div class="btn btn-icon btn-ghost" data-act="removePersonalChecklistItem" data-id="${c.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>
-      </div>`;
-    }).join("");
+    const rows = items.map(c => renderChecklistRow(c, editMode, canEditMine, section)).join("");
     return `<div style="padding:8px 0;border-bottom:${i < usedCats.length - 1 ? "1px solid var(--color-divider)" : "none"}">
         <div data-act="toggleGroupCollapse" data-id="${esc(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}</div>
+          <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}${CATEGORY_NOTE[cat] ? `<span style="font-weight:400;opacity:.55;font-size:11px"> ${esc(CATEGORY_NOTE[cat])}</span>` : ""}</div>
           <i data-lucide="${expanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px;color:var(--color-accent-700)"></i>
         </div>
         ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">
@@ -1489,10 +1573,32 @@ function renderPersonalChecklistCard(title, section, gridArea) {
         </div>` : ""}
       </div>`;
   }).join("");
+
+  const TAG_EMOJI = { "隨身": "🎒", "登機箱": "🧳", "託運": "📦", "未分類": "❔" };
+  const tagGroupNames = BAG_TAGS.concat(myItems.some(it => !it.bagTag) ? ["未分類"] : []);
+  const groupsByTag = tagGroupNames.map((tag, i) => {
+    const key = "personal:packingtag:" + tag;
+    const expanded = !!state.ui.expandedGroups[key];
+    const items = tag === "未分類" ? myItems.filter(it => !it.bagTag) : myItems.filter(it => it.bagTag === tag);
+    const rows = items.map(c => renderChecklistRow(c, editMode, canEditMine, section)).join("");
+    return `<div style="padding:8px 0;border-bottom:${i < tagGroupNames.length - 1 ? "1px solid var(--color-divider)" : "none"}">
+        <div data-act="toggleGroupCollapse" data-id="${esc(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:12.5px;font-weight:700">${TAG_EMOJI[tag] || ""} ${esc(tag)}（${items.length}）</div>
+          <i data-lucide="${expanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px;color:var(--color-accent-700)"></i>
+        </div>
+        ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}</div>` : ""}
+      </div>`;
+  }).join("");
+
+  const groups = viewMode === "tag" ? groupsByTag : groupsByCategory;
+  const viewToggleBtn = isPacking ? `<div class="btn btn-secondary" data-act="togglePackingViewMode" style="font-size:11px;padding:4px 8px;white-space:nowrap">${viewMode === "tag" ? "🔄 依原分類" : "🔄 依隨身/登機/託運"}</div>` : "";
   return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px">
         <div class="card-title" style="font-size:16px">${esc(title)}</div>
-        ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
+        <div style="display:flex;align-items:center;gap:4px;flex:none">
+          ${viewToggleBtn}
+          ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
+        </div>
       </div>
       ${groups}
     </div>`;
@@ -1500,9 +1606,11 @@ function renderPersonalChecklistCard(title, section, gridArea) {
 
 function renderPrep(trip) {
   const canEdit = canEditGeneral();
+  const canReset = isPrimaryEditor();
   ensurePersonalChecklistSeeded();
   trip = findTrip();
   return `
+  ${canReset ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div class="btn btn-ghost" data-act="resetPrepTemplate" style="font-size:11.5px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成最新公版</div></div>` : ""}
   <div class="prep-grid">
     ${renderPersonalChecklistCard("待辦", "prep", "todo")}
     <div class="card card-bordered" style="grid-area:notes">
@@ -2162,6 +2270,9 @@ function initEvents() {
       case "addPersonalChecklistItem": actions.addPersonalChecklistItem(actEl.getAttribute("data-section"), actEl.getAttribute("data-cat")); break;
       case "removePersonalChecklistItem": actions.removePersonalChecklistItem(id); break;
       case "toggleChecklistEditMode": actions.toggleChecklistEditMode(actEl.getAttribute("data-section")); break;
+      case "togglePackingViewMode": actions.togglePackingViewMode(); break;
+      case "setPersonalItemBagTag": actions.setPersonalItemBagTag(id, actEl.getAttribute("data-tag")); break;
+      case "resetPrepTemplate": actions.resetPrepTemplate(); break;
       case "addDocument": actions.addDocument(); break;
       case "removeDocument": actions.removeDocument(id); break;
       case "reorderBudget": reorderViaChevron("budget", actEl); break;
