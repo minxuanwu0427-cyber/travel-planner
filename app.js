@@ -287,6 +287,8 @@ function defaultUiState() {
     addTripModalOpen: false, newTripName: "", newTripCountry: "", newTripFlag: "", newTripDateStart: "", newTripDateEnd: "",
     editingItemId: null,
     formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
+    formId: null, formAlert: "", formDocs: [],
+    docGalleryItemId: null, docGalleryIndex: 0,
     budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [],
     memoFormTag: "", memoFormName: "", memoFormPrice: "", memoFormCurrency: "TWD", memoFormId: null,
     newGuestName: "",
@@ -901,15 +903,28 @@ const actions = {
   },
 
   openAddItem() {
-    state.ui.itemModalOpen = true; state.ui.editingItemId = null;
+    state.ui.itemModalOpen = true; state.ui.editingItemId = null; state.ui.formId = uid("i");
     state.ui.formTime = ""; state.ui.formTitle = ""; state.ui.formCategory = "景點";
     state.ui.formLocation = ""; state.ui.formLocationUrl = ""; state.ui.formNote = "";
+    state.ui.formAlert = ""; state.ui.formDocs = [];
     render(true);
   },
   openEditItem(item) {
-    state.ui.itemModalOpen = true; state.ui.editingItemId = item.id;
+    state.ui.itemModalOpen = true; state.ui.editingItemId = item.id; state.ui.formId = item.id;
     state.ui.formTime = item.time; state.ui.formTitle = item.title; state.ui.formCategory = item.category;
     state.ui.formLocation = item.location; state.ui.formLocationUrl = item.locationUrl || ""; state.ui.formNote = item.note;
+    state.ui.formAlert = item.alert || ""; state.ui.formDocs = item.docs || [];
+    render(true);
+  },
+  addFormDoc() {
+    if (!canEditGeneral()) return;
+    state.ui.formDocs = [...state.ui.formDocs, { id: uid("doc"), note: "" }];
+    render(true);
+  },
+  removeFormDoc(docId) {
+    if (!canEditGeneral()) return;
+    delete state.images["item-doc-" + state.ui.formId + "-" + docId];
+    state.ui.formDocs = state.ui.formDocs.filter(d => d.id !== docId);
     render(true);
   },
   closeModal() {
@@ -919,9 +934,13 @@ const actions = {
       const exists = trip.memoItems.some(m => m.id === state.ui.memoFormId);
       if (!exists) delete state.images["memo-photo-" + state.ui.memoFormId];
     }
+    // 新增行程項目時上傳了「行程資料」照片但取消，也順便清掉沒用到的孤兒照片
+    if (state.ui.itemModalOpen && !state.ui.editingItemId && state.ui.formId) {
+      (state.ui.formDocs || []).forEach(d => delete state.images["item-doc-" + state.ui.formId + "-" + d.id]);
+    }
     state.ui.itemModalOpen = false; state.ui.budgetModalOpen = false; state.ui.memoModalOpen = false; state.ui.shareModalOpen = false;
     state.ui.addTripModalOpen = false; state.ui.unlockModalOpen = false; state.ui.unlockError = "";
-    state.ui.swapDayModalOpen = false;
+    state.ui.swapDayModalOpen = false; state.ui.docGalleryItemId = null;
     state.ui.editingBudgetId = null; state.ui.editingMemoId = null; state.ui.memoFormId = null;
     render(true);
   },
@@ -932,14 +951,26 @@ const actions = {
     render(true);
   },
   closeLightbox() { state.ui.lightboxSrc = null; render(true); },
+  openDocGallery(itemId, index) {
+    state.ui.docGalleryItemId = itemId;
+    state.ui.docGalleryIndex = index || 0;
+    render(true);
+  },
+  shiftDocGallery(delta) {
+    const trip = findTrip();
+    const item = trip.days.flatMap(d => d.items).find(it => it.id === state.ui.docGalleryItemId);
+    if (!item || !item.docs || !item.docs.length) return;
+    state.ui.docGalleryIndex = (state.ui.docGalleryIndex + delta + item.docs.length) % item.docs.length;
+    render(true);
+  },
   saveItem(isBackup) {
     const u = state.ui;
     if (!u.formTitle.trim()) { u.itemModalOpen = false; render(true); return; }
     mutateTrip(t => ({
       ...t, days: t.days.map(d => d.id !== state.activeDayId ? d : {
         ...d, items: u.editingItemId
-          ? d.items.map(it => it.id === u.editingItemId ? { ...it, time: u.formTime, title: u.formTitle, category: u.formCategory, location: u.formLocation, locationUrl: u.formLocationUrl, note: u.formNote } : it)
-          : [...d.items, { id: uid("i"), time: u.formTime || "--:--", title: u.formTitle, category: u.formCategory, location: u.formLocation, locationUrl: u.formLocationUrl, note: u.formNote, hasPhoto: false, isBackup: !!isBackup }]
+          ? d.items.map(it => it.id === u.editingItemId ? { ...it, time: u.formTime, title: u.formTitle, category: u.formCategory, location: u.formLocation, locationUrl: u.formLocationUrl, note: u.formNote, alert: u.formAlert, docs: u.formDocs } : it)
+          : [...d.items, { id: u.formId, time: u.formTime || "--:--", title: u.formTitle, category: u.formCategory, location: u.formLocation, locationUrl: u.formLocationUrl, note: u.formNote, alert: u.formAlert, docs: u.formDocs, hasPhoto: false, isBackup: !!isBackup }]
       })
     }));
     u.itemModalOpen = false;
@@ -1455,11 +1486,13 @@ function renderItinerary(trip, day) {
         : `<span style="font-size:12.5px;opacity:.4">尚未設定地點</span>`;
       const locationBlock = isExpanded ? `
         <div style="display:flex;align-items:center;gap:5px;margin-top:2px;margin-left:40px">
-          <span style="font-size:12px">🗺️</span>
+          <span style="font-size:12px">📌</span>
           ${locationDisplay}
           ${it.locationUrl ? `<a href="${esc(it.locationUrl)}" target="_blank" rel="noopener" title="在 Google 地圖開啟"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg></a>` : ""}
         </div>
+        ${it.alert ? `<div style="font-size:12.5px;line-height:1.7;font-weight:600;color:var(--color-danger,#c0392b);margin-top:6px;margin-left:40px">⚠️ ${esc(it.alert)}</div>` : ""}
         ${it.note ? `<div style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px">${esc(it.note)}</div>` : ""}
+        ${it.docs && it.docs.length ? `<div data-act="openDocGallery" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="paperclip" style="width:12px;height:12px"></i> 行程資料（${it.docs.length}）</div>` : ""}
       ` : "";
       const thumbSize = canEdit ? 52 : 88;
       const thumb = imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24 });
@@ -1693,7 +1726,20 @@ function renderModals(trip) {
           <input class="input" id="f-location" value="${esc(u.formLocation)}" placeholder="例：那霸市，或貼上 Google 地圖網址自動取名" />
           <div id="f-location-status" style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">${u.formLocationUrl ? "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟" : ""}</div>
         </div>
+        <div class="field"><label style="color:var(--color-danger,#c0392b)">重要提醒</label><input class="input" id="f-alert" value="${esc(u.formAlert)}" placeholder="例：需事先預約、記得帶護照" style="color:var(--color-danger,#c0392b)" /></div>
         <div class="field"><label>備註</label><input class="input" id="f-note" value="${esc(u.formNote)}" placeholder="提醒事項、預算等" /></div>
+        <div class="field">
+          <label>行程資料</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            ${(u.formDocs || []).map(d => `
+              <div style="width:84px">
+                ${imageSlot("item-doc-" + u.formId + "-" + d.id, "上傳圖片", { style: "width:84px;height:64px", radius: 6, compact: true })}
+                <input class="input input-plain" id="f-doc-note-${d.id}" value="${esc(d.note)}" placeholder="說明" style="font-size:11px;margin-top:2px;text-align:center" />
+                <div data-act="removeFormDoc" data-id="${d.id}" style="text-align:center;cursor:pointer;opacity:.6;font-size:11px;margin-top:2px">移除</div>
+              </div>`).join("")}
+            <div data-act="addFormDoc" style="width:84px;height:64px;border-radius:6px;border:1.5px dashed var(--color-divider);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--color-neutral-500)"><i data-lucide="plus" style="width:18px;height:18px"></i></div>
+          </div>
+        </div>
         <div class="dialog-actions">
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
           ${!u.editingItemId ? `<div class="btn btn-secondary" data-act="saveItemForm" data-backup="1" title="與同時段行程並列顯示，作為備選方案">備案行程</div>` : ""}
@@ -1850,6 +1896,26 @@ function renderModals(trip) {
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
         </div>
       </div>
+    </div>`;
+  }
+  if (state.ui.docGalleryItemId) {
+    const item = trip.days.flatMap(d => d.items).find(it => it.id === state.ui.docGalleryItemId);
+    const docs = item ? (item.docs || []) : [];
+    const idx = Math.min(state.ui.docGalleryIndex, Math.max(docs.length - 1, 0));
+    const doc = docs[idx];
+    const src = doc ? state.images["item-doc-" + item.id + "-" + doc.id] : null;
+    html += `
+    <div class="dialog-backdrop lightbox-backdrop" data-act="closeModal" style="z-index:200;background:color-mix(in srgb, black 82%, transparent);padding:var(--space-4)">
+      <div data-stop-click class="dialog" style="background:transparent;box-shadow:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:10px;max-width:92vw">
+        ${doc && doc.note ? `<div style="color:#fff;font-size:14px;font-weight:600;text-align:center;padding:0 12px">${esc(doc.note)}</div>` : ""}
+        <div style="display:flex;align-items:center;gap:10px">
+          ${docs.length > 1 ? `<div class="btn btn-icon" data-act="shiftDocGallery" data-dir="-1" style="background:color-mix(in srgb, black 45%, transparent);color:#fff;width:36px;height:36px;border-radius:50%;flex:none"><i data-lucide="chevron-left" style="width:18px;height:18px"></i></div>` : ""}
+          ${src ? `<img src="${src}" style="max-width:78vw;max-height:74vh;object-fit:contain;border-radius:10px;box-shadow:var(--shadow-lg)" />` : `<div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;color:#fff;opacity:.6;font-size:13px">尚無圖片</div>`}
+          ${docs.length > 1 ? `<div class="btn btn-icon" data-act="shiftDocGallery" data-dir="1" style="background:color-mix(in srgb, black 45%, transparent);color:#fff;width:36px;height:36px;border-radius:50%;flex:none"><i data-lucide="chevron-right" style="width:18px;height:18px"></i></div>` : ""}
+        </div>
+        ${docs.length > 1 ? `<div style="color:#fff;opacity:.7;font-size:12px">${idx + 1} / ${docs.length}</div>` : ""}
+      </div>
+      <div class="btn btn-icon" data-act="closeModal" style="position:fixed;top:20px;right:20px;background:color-mix(in srgb, black 45%, transparent);color:#fff;width:40px;height:40px;border-radius:50%"><i data-lucide="x" style="width:20px;height:20px"></i></div>
     </div>`;
   }
   if (state.ui.lightboxSrc) {
@@ -2034,25 +2100,16 @@ function initEvents() {
       }
       case "openLightbox": actions.openLightbox(actEl.getAttribute("data-slot")); break;
       case "closeLightbox": actions.closeLightbox(); break;
+      case "openDocGallery": actions.openDocGallery(id, 0); break;
+      case "shiftDocGallery": actions.shiftDocGallery(Number(actEl.getAttribute("data-dir"))); break;
       case "saveItemForm": {
         const isBackup = actEl.getAttribute("data-backup") === "1";
-        state.ui.formTime = document.getElementById("f-time").value;
-        state.ui.formCategory = document.getElementById("f-category").value;
-        state.ui.formTitle = document.getElementById("f-title").value;
-        const locEl = document.getElementById("f-location");
-        const rawLoc = locEl.value.trim();
-        if (rawLoc !== state.ui.formLocation) {
-          // 使用者沒有先離開地點欄位觸發自動解析（例如打完直接按儲存）—— 這裡做最後一次同步解析，
-          // 純文字修改則保留原本已經連結好的地圖網址，不會被清空
-          const parsed = parseGoogleMapsLocation(rawLoc);
-          if (parsed.url && parsed.name) { state.ui.formLocation = parsed.name; state.ui.formLocationUrl = parsed.url; }
-          else if (parsed.url && !parsed.name) { state.ui.formLocation = ""; state.ui.formLocationUrl = parsed.url; }
-          else { state.ui.formLocation = rawLoc; }
-        }
-        state.ui.formNote = document.getElementById("f-note").value;
+        syncItemFormFieldsFromDom();
         actions.saveItem(isBackup);
         break;
       }
+      case "addFormDoc": syncItemFormFieldsFromDom(); actions.addFormDoc(); break;
+      case "removeFormDoc": syncItemFormFieldsFromDom(); actions.removeFormDoc(id); break;
       case "openAddBudget": actions.openAddBudget(); break;
       case "openAddPersonalBudget": actions.openAddPersonalBudget(); break;
       case "openEditBudget": {
@@ -2259,6 +2316,32 @@ async function handleLocationFieldBlur(el) {
   state.ui.formLocation = raw;
   if (statusEl) statusEl.textContent = state.ui.formLocationUrl ? "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟" : "";
 }
+/* 新增/編輯行程項目的表單裡，只要跳出「新增行程資料」這種會整個重繪 modal 的動作，
+   就要先把目前已經打在欄位裡但還沒觸發 blur 的文字同步進 state，不然重繪時會被清空 */
+function syncItemFormFieldsFromDom() {
+  const timeEl = document.getElementById("f-time");
+  if (!timeEl) return; // modal 不是開著的
+  state.ui.formTime = timeEl.value;
+  state.ui.formCategory = document.getElementById("f-category").value;
+  state.ui.formTitle = document.getElementById("f-title").value;
+  const locEl = document.getElementById("f-location");
+  const rawLoc = locEl.value.trim();
+  if (rawLoc !== state.ui.formLocation) {
+    // 使用者沒有先離開地點欄位觸發自動解析（例如打完直接按儲存）—— 這裡做最後一次同步解析，
+    // 純文字修改則保留原本已經連結好的地圖網址，不會被清空
+    const parsed = parseGoogleMapsLocation(rawLoc);
+    if (parsed.url && parsed.name) { state.ui.formLocation = parsed.name; state.ui.formLocationUrl = parsed.url; }
+    else if (parsed.url && !parsed.name) { state.ui.formLocation = ""; state.ui.formLocationUrl = parsed.url; }
+    else { state.ui.formLocation = rawLoc; }
+  }
+  state.ui.formNote = document.getElementById("f-note").value;
+  state.ui.formAlert = document.getElementById("f-alert").value;
+  state.ui.formDocs = (state.ui.formDocs || []).map(d => {
+    const noteEl = document.getElementById("f-doc-note-" + d.id);
+    return { ...d, note: noteEl ? noteEl.value : d.note };
+  });
+}
+
 function handleFieldCommit(e) {
   if (suppressBlurCommit) return;
   const el = e.target;
