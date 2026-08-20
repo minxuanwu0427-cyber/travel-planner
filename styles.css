@@ -119,6 +119,9 @@ button { font-family: inherit; }
 .input:focus-visible { border-color: var(--color-accent); }
 .input[readonly] { cursor: default; opacity: 0.85; }
 .input-plain { border: none; background: transparent; padding: 2px 4px; }
+/* 預算頁項目列的文字/金額欄位用這個──.input 預設 min-height:36px 對這種一行小字的列表來說太高，
+   是造成「行距看起來很寬」的主因，這裡把它壓低，讓整行高度貼著文字本身 */
+.input-compact { min-height: 0; padding: 1px 2px; }
 textarea.input { min-height: 90px; resize: vertical; }
 .seg { display: inline-flex; overflow: hidden; border: 1px solid var(--color-divider); border-radius: 999px; }
 .seg-opt { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; }
