@@ -1695,7 +1695,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   /* 待辦（私人）現在是完全自由的筆記區：沒有公版、沒有分類，旅伴想記什麼就自己新增 */
   if (!isPacking) {
     const rows = myItems.map(c => renderChecklistRow(c, editMode, canEditMine, section)).join("");
-    return `<div class="card card-bordered">
+    return `<div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px">
           <div class="card-title" style="font-size:16px">${esc(title)}</div>
           ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
@@ -1756,7 +1756,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
       <div style="position:absolute;top:2px;left:${viewMode === "tag" ? "18px" : "2px"};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s ease"></div>
     </div>` : "";
   const uncheckAllBtn = isPacking ? `<div class="btn btn-icon btn-ghost" data-act="uncheckAllPacking" title="全部取消勾選，重新收拾行李"><i data-lucide="rotate-ccw" style="width:15px;height:15px"></i></div>` : "";
-  return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
+  return `<div ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${isPacking ? "8px" : "6px"};gap:6px">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <div class="card-title" style="font-size:16px">${esc(title)}</div>
@@ -1839,7 +1839,7 @@ function renderSharedTodoCard(trip) {
       <div class="tab-pill" data-act="setSharedTodoTab" data-tab="personal" style="padding:5px 12px;font-size:11.5px;background:${tab === "personal" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "personal" ? "var(--color-bg)" : "var(--color-text)"}">個人</div>
     </div>`;
 
-  return `<div class="card card-bordered" style="margin-bottom:var(--space-3)">
+  return `<div style="padding-bottom:var(--space-4);margin-bottom:var(--space-4);border-bottom:1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
           <div class="card-title" style="font-size:16px">全體進度</div>
@@ -1861,7 +1861,7 @@ function renderPrep(trip) {
 
   const folderTab = (tab, label) => {
     const active = mainTab === tab;
-    return `<div data-act="setPrepMainTab" data-tab="${tab}" style="cursor:pointer;padding:9px 22px;border-radius:14px 14px 0 0;font-size:13.5px;font-weight:700;background:${active ? "var(--color-bg)" : "var(--color-surface)"};color:${active ? "var(--color-text)" : "var(--color-neutral-500)"};position:relative;${active ? "box-shadow:0 -1px 3px rgba(0,0,0,.04)" : ""}">${esc(label)}</div>`;
+    return `<div data-act="setPrepMainTab" data-tab="${tab}" style="cursor:pointer;padding:9px 22px;border-radius:14px 14px 0 0;font-size:13.5px;font-weight:700;background:${active ? "var(--color-accent-100)" : "var(--color-surface)"};color:${active ? "var(--color-accent-700)" : "var(--color-neutral-500)"};position:relative">${esc(label)}</div>`;
   };
   const folderTabs = `<div style="display:flex;gap:4px;padding-left:2px;position:relative;z-index:1">
       ${folderTab("todo", "待辦")}
@@ -1875,19 +1875,19 @@ function renderPrep(trip) {
 
   const packingContent = renderPersonalChecklistCard("行李清單", "packing");
 
-  const notesContent = `<div class="card card-bordered">
+  const notesContent = `<div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px">
         <div class="card-title" style="font-size:16px">注意事項</div>
         ${isPrimaryEditor() ? `<div class="btn btn-ghost" data-act="resetPrepNotes" style="font-size:11px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成公版</div>` : ""}
       </div>
-      <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(trip.notes, 6)}" style="font-size:13px;line-height:1.85;height:auto" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
+      <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(trip.notes, 6)}" style="font-size:13px;line-height:1.85;height:auto;background:var(--color-bg)" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
     </div>`;
 
   const contentByTab = { todo: todoContent, packing: packingContent, notes: notesContent };
 
   return `
   ${folderTabs}
-  <div style="margin-top:6px">
+  <div style="background:var(--color-accent-100);border-radius:0 var(--radius-lg) var(--radius-lg) var(--radius-lg);padding:var(--space-4);margin-top:-1px">
     ${contentByTab[mainTab]}
   </div>`;
 }
@@ -1983,16 +1983,14 @@ function renderItinerary(trip, day) {
 
   return `
     <div class="chip-row" style="margin-bottom:var(--space-3)">${dayChips}</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:var(--space-3)">
-      <input class="input input-plain" data-bind-blur="dayTitle" value="${esc(day.title || "")}" ${canEdit ? "" : "readonly"} placeholder="為這天下個標題，例如：國際通" style="font-size:14px;font-weight:600;max-width:280px" />
-      ${canEdit && trip.days.length > 1 ? `<div class="btn btn-secondary" data-act="openSwapDayModal" style="font-size:12px;flex:none"><i data-lucide="repeat" style="width:13px;height:13px"></i> 跟別天互換</div>` : ""}
-    </div>
-    <div style="display:flex;align-items:center;margin-bottom:var(--space-4)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:var(--space-4);flex-wrap:wrap">
+      <input class="input input-plain" data-bind-blur="dayTitle" value="${esc(day.title || "")}" ${canEdit ? "" : "readonly"} placeholder="標題" title="為這天下個標題，例如：國際通" style="font-size:14px;font-weight:600;width:96px;flex:none" />
       <div class="seg">
         <label class="seg-opt ${state.itineraryFilter === "all" ? "active" : ""}" data-act="setFilter" data-id="all">總覽</label>
         <label class="seg-opt ${state.itineraryFilter === "transit" ? "active" : ""}" data-act="setFilter" data-id="transit">交通</label>
         <label class="seg-opt ${state.itineraryFilter === "stay" ? "active" : ""}" data-act="setFilter" data-id="stay">住宿</label>
       </div>
+      ${canEdit && trip.days.length > 1 ? `<div class="btn btn-secondary" data-act="openSwapDayModal" style="font-size:12px;flex:none"><i data-lucide="repeat" style="width:13px;height:13px"></i> 跟別天互換</div>` : ""}
     </div>
     ${canEdit ? `<div class="fab" data-act="openAddItem" title="新增行程"><i data-lucide="plus" style="width:24px;height:24px"></i></div>` : ""}
     <div class="timeline">
