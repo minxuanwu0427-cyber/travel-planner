@@ -1830,12 +1830,12 @@ function renderSharedTodoCard(trip) {
   return `<div class="card card-bordered" style="margin-bottom:var(--space-3)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
-          <div class="card-title" style="font-size:16px">待辦（共用區）</div>
+          <div class="card-title" style="font-size:16px">全體進度</div>
           ${tabBar}
         </div>
         ${primary ? `<div class="btn btn-icon btn-ghost" data-act="toggleSharedTodoEditMode" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
       </div>
-      <div style="font-size:11px;opacity:.6;margin-bottom:4px">${tab === "group" ? "團體項目大家共用同一個勾選狀態，只有主揪能打勾" : "個人項目大家共用清單，但各自打勾，主揪可以看到誰已完成"}</div>
+      <div style="font-size:11px;opacity:.6;margin-bottom:4px">${tab === "group" ? "團體項目統籌進度，由主揪勾選" : "大家被分派的任務，主揪可以看到誰已完成"}</div>
       ${editMode ? `<div class="btn btn-ghost" data-act="resetSharedTodo" style="font-size:11px;opacity:.7;margin-bottom:6px"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 清空重新套用最新公版</div>` : ""}
       ${groups}
     </div>`;
@@ -1846,7 +1846,7 @@ function renderPrep(trip) {
   const canReset = isPrimaryEditor();
   ensurePersonalChecklistSeeded();
   trip = findTrip();
-  const mainTab = state.ui.prepMainTab === "packing" ? "packing" : "todo";
+  const mainTab = ["todo", "packing", "notes"].includes(state.ui.prepMainTab) ? state.ui.prepMainTab : "todo";
 
   const folderTab = (tab, label) => {
     const active = mainTab === tab;
@@ -1855,12 +1855,16 @@ function renderPrep(trip) {
   const folderTabs = `<div style="display:flex;gap:4px;padding-left:2px;position:relative;z-index:1">
       ${folderTab("todo", "待辦")}
       ${folderTab("packing", "行李")}
+      ${folderTab("notes", "注意事項")}
     </div>`;
 
   const todoContent = `
     ${renderSharedTodoCard(trip)}
-    ${renderPersonalChecklistCard("待辦（私人）", "prep")}
-    <div class="card card-bordered" style="margin-top:var(--space-3)">
+    ${renderPersonalChecklistCard("私人待辦", "prep")}`;
+
+  const packingContent = renderPersonalChecklistCard("行李清單", "packing");
+
+  const notesContent = `<div class="card card-bordered">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px">
         <div class="card-title" style="font-size:16px">注意事項</div>
         ${isPrimaryEditor() ? `<div class="btn btn-ghost" data-act="resetPrepNotes" style="font-size:11px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成公版</div>` : ""}
@@ -1868,13 +1872,13 @@ function renderPrep(trip) {
       <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(trip.notes, 6)}" style="font-size:13px;line-height:1.85;height:auto" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
     </div>`;
 
-  const packingContent = renderPersonalChecklistCard("行李清單", "packing");
+  const contentByTab = { todo: todoContent, packing: packingContent, notes: notesContent };
 
   return `
   ${canReset ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div class="btn btn-ghost" data-act="resetPrepTemplate" style="font-size:11.5px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成最新公版</div></div>` : ""}
   ${folderTabs}
   <div style="margin-top:6px">
-    ${mainTab === "todo" ? todoContent : packingContent}
+    ${contentByTab[mainTab]}
   </div>`;
 }
 
