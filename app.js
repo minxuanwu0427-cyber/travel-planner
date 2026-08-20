@@ -2056,9 +2056,9 @@ function renderBudget(trip) {
           const rowCanRemove = canRemoveBudgetItem(b);
           // 個人項目：單行呈現。項目文字吃掉剩餘空間、金額欄位縮窄，價格自然被推到比較右邊的位置
           return `
-      <div style="display:flex;align-items:center;gap:8px;padding:3px 2px;font-size:13px">
-          <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:0" />
-          <div style="display:flex;align-items:baseline;gap:2px;flex:none;font-family:var(--font-body);font-weight:700;opacity:.85;white-space:nowrap;margin-left:6px">${currencySymbol(cur)}<input class="input input-plain input-amount input-amount-sm" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:52px;font-family:var(--font-body);font-weight:700" /></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:1px 2px;font-size:13px">
+          <input class="input input-plain input-compact" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:0" />
+          <div style="display:flex;align-items:baseline;gap:2px;flex:none;font-family:var(--font-body);font-weight:700;opacity:.85;white-space:nowrap;margin-left:6px">${currencySymbol(cur)}<input class="input input-plain input-compact input-amount input-amount-sm" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:52px;font-family:var(--font-body);font-weight:700" /></div>
           ${convertedText ? `<div style="font-size:10.5px;color:var(--color-neutral-500);white-space:nowrap;flex:none">${convertedText}</div>` : ""}
           <div style="display:flex;gap:2px;flex:none">
             ${rowCanEdit ? `<div class="btn btn-icon btn-ghost" data-act="openEditBudget" data-id="${b.id}"><i data-lucide="pencil" style="width:13px;height:13px"></i></div>` : ""}
@@ -2079,18 +2079,18 @@ function renderBudget(trip) {
         return `<div data-act="${rowCanEdit ? "toggleBudgetPayer" : ""}" data-id="${b.id}" data-person="${p.id}" title="${esc(p.name)}${active ? "（需付款）" : ""}" style="cursor:${rowCanEdit ? "pointer" : "default"};width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex:none;color:${active ? "#fff" : "var(--color-neutral-400)"};background:${active ? color : "transparent"};border:1.5px solid ${active ? color : "var(--color-divider)"}">${esc(p.initial)}</div>`;
       }).join("");
       return `
-      <div style="padding:2px;font-size:13px">
+      <div style="padding:1px 2px;font-size:13px">
         <div style="display:flex;align-items:center;gap:6px">
           ${rowCanEdit ? `<div style="display:flex;flex-direction:column;flex:none">
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="down" data-id="${b.id}" style="cursor:pointer;opacity:${i < items.length - 1 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></div>
           </div>` : ""}
-          <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
+          <input class="input input-plain input-compact" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:none">${payerRow}</div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:1px;padding-left:${rowCanEdit ? "18px" : "0"}">
           <div style="display:flex;align-items:baseline;gap:6px;flex:none;text-align:left">
-            <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />/人</div>
+            <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-compact input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />/人</div>
             ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">${convertedText}</div>` : ""}
           </div>
           <div style="display:flex;gap:2px;flex:none">
