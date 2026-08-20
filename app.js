@@ -14,6 +14,21 @@ const CATEGORY_META = {
   "住宿": { icon: "bed", tagBg: "oklch(92% 0.05 145)", tagFg: "oklch(40% 0.1 145)" },
   "其他": { icon: "circle", tagBg: "var(--color-neutral-200)", tagFg: "var(--color-neutral-700)" }
 };
+/* 這幾個分類的圖示直接內嵌 SVG 路徑（不透過 lucide.createIcons() 動態產生）。
+   某些裝置上曾出現 lucide 圖示載入不完整、部分圖示（例如餐飲、住宿）顯示成亂碼文字的狀況，
+   直接內嵌可以避免依賴 lucide.js 在該裝置上是否正確執行 */
+const CATEGORY_ICON_SVG = {
+  car: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
+  "map-pin": '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  utensils: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
+  "shopping-bag": '<path d="M16 10a4 4 0 0 1-8 0"/><path d="M3.103 6.034h17.794"/><path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"/>',
+  bed: '<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>',
+  circle: '<circle cx="12" cy="12" r="10"/>'
+};
+function categoryIconSvg(iconName, size, color) {
+  const inner = CATEGORY_ICON_SVG[iconName] || CATEGORY_ICON_SVG.circle;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+}
 const CATEGORY_OPTIONS = ["交通", "景點", "餐飲", "購物", "住宿", "其他"];
 const BUDGET_CATS = ["個人", "票券", "交通", "住宿", "其他"];
 const PREP_CATS = ["票券", "保險", "其他"];
@@ -289,7 +304,7 @@ function defaultUiState() {
     formTime: "", formTitle: "", formCategory: "景點", formLocation: "", formLocationUrl: "", formNote: "",
     formId: null, formAlert: "", formDocs: [],
     docGalleryItemId: null, docGalleryIndex: 0,
-    budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [],
+    budgetFormCategory: "票券", budgetFormLabel: "", budgetFormAmount: "", budgetFormCurrency: "TWD", budgetFormPayerIds: [], budgetFormDayId: "",
     memoFormTag: "", memoFormName: "", memoFormPrice: "", memoFormCurrency: "TWD", memoFormId: null,
     newGuestName: "",
     isEditingTripName: false, tripNameDraft: "",
@@ -301,7 +316,9 @@ function defaultUiState() {
     connectionError: false,
     unlockModalOpen: false, unlockError: "",
     editingMemoTag: null,
-    swapDayModalOpen: false
+    swapDayModalOpen: false,
+    checklistEditMode: {},
+    moveItemId: null
   };
 }
 function defaultCollaborators() {
@@ -630,6 +647,30 @@ const actions = {
     });
     render(true);
   },
+  openMoveItemModal(itemId) {
+    if (!canEditGeneral()) return;
+    state.ui.moveItemId = itemId;
+    render(true);
+  },
+  moveItemToDay(targetDayId) {
+    if (!canEditGeneral()) return;
+    const itemId = state.ui.moveItemId;
+    state.ui.moveItemId = null;
+    if (!itemId) { render(true); return; }
+    mutateTrip(t => {
+      let moved = null;
+      const strippedDays = t.days.map(d => {
+        const idx = d.items.findIndex(it => it.id === itemId);
+        if (idx === -1) return d;
+        moved = d.items[idx];
+        return { ...d, items: d.items.filter(it => it.id !== itemId) };
+      });
+      if (!moved) return t;
+      return { ...t, days: strippedDays.map(d => d.id === targetDayId ? { ...d, items: [...d.items, moved] } : d) };
+    });
+    state.activeDayId = targetDayId;
+    render(true);
+  },
   setFilter(f) { state.itineraryFilter = f; render(); },
 
   toggleCollabMenu() { state.ui.collabMenuOpen = !state.ui.collabMenuOpen; render(true); },
@@ -726,6 +767,10 @@ const actions = {
     if (!item || item.ownerId !== state.currentUserId) return;
     mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.filter(it => it.id !== id) }));
     render();
+  },
+  toggleChecklistEditMode(section) {
+    state.ui.checklistEditMode = { ...state.ui.checklistEditMode, [section]: !state.ui.checklistEditMode[section] };
+    render(true);
   },
 
   /* 總覽頁「資料」區：放票券 QRCode、eSIM 設定說明等，跟其他共用內容一樣是編輯者維護、檢視者唯讀 */
@@ -940,7 +985,7 @@ const actions = {
     }
     state.ui.itemModalOpen = false; state.ui.budgetModalOpen = false; state.ui.memoModalOpen = false; state.ui.shareModalOpen = false;
     state.ui.addTripModalOpen = false; state.ui.unlockModalOpen = false; state.ui.unlockError = "";
-    state.ui.swapDayModalOpen = false; state.ui.docGalleryItemId = null;
+    state.ui.swapDayModalOpen = false; state.ui.docGalleryItemId = null; state.ui.moveItemId = null;
     state.ui.editingBudgetId = null; state.ui.editingMemoId = null; state.ui.memoFormId = null;
     render(true);
   },
@@ -986,14 +1031,17 @@ const actions = {
     state.ui.budgetModalOpen = true; state.ui.editingBudgetId = null;
     state.ui.budgetFormCategory = "票券"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = "";
     state.ui.budgetFormCurrency = "TWD"; state.ui.budgetFormPayerIds = state.collaborators.map(p => p.id);
+    state.ui.budgetFormDayId = "";
     render(true);
   },
   openAddPersonalBudget() {
     // 「個人」分類任何人（不管編輯／檢視權限，也不受檢視模式影響）都能新增自己的項目
     if (!state.currentUserId) return;
+    const trip = findTrip();
     state.ui.budgetModalOpen = true; state.ui.editingBudgetId = null;
     state.ui.budgetFormCategory = "個人"; state.ui.budgetFormLabel = ""; state.ui.budgetFormAmount = "";
     state.ui.budgetFormCurrency = "TWD"; state.ui.budgetFormPayerIds = [state.currentUserId];
+    state.ui.budgetFormDayId = (trip.days[0] && trip.days[0].id) || "";
     render(true);
   },
   openEditBudget(item) {
@@ -1001,6 +1049,7 @@ const actions = {
     state.ui.budgetModalOpen = true; state.ui.editingBudgetId = item.id;
     state.ui.budgetFormCategory = item.category; state.ui.budgetFormLabel = item.label; state.ui.budgetFormAmount = String(item.amount);
     state.ui.budgetFormCurrency = item.currency || "TWD"; state.ui.budgetFormPayerIds = item.payerIds || [];
+    state.ui.budgetFormDayId = item.dayId || "";
     render(true);
   },
   saveBudget() {
@@ -1014,7 +1063,8 @@ const actions = {
       mutateTrip(t => ({ ...t, budget: t.budget.map(b => b.id !== editId ? b : {
         ...b, category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0,
         currency: u.budgetFormCurrency || "TWD",
-        payerIds: isPersonal ? [existing.ownerId || state.currentUserId] : (u.budgetFormPayerIds && u.budgetFormPayerIds.length ? u.budgetFormPayerIds : b.payerIds)
+        payerIds: isPersonal ? [existing.ownerId || state.currentUserId] : (u.budgetFormPayerIds && u.budgetFormPayerIds.length ? u.budgetFormPayerIds : b.payerIds),
+        dayId: isPersonal ? (u.budgetFormDayId || null) : (b.dayId || null)
       }) }));
     } else {
       const allowed = isPersonal ? !!state.currentUserId : isPrimaryEditor();
@@ -1023,7 +1073,8 @@ const actions = {
         id: uid("b"), category: u.budgetFormCategory, label: u.budgetFormLabel, amount: Number(u.budgetFormAmount) || 0,
         currency: u.budgetFormCurrency || "TWD",
         payerIds: isPersonal ? [state.currentUserId] : (u.budgetFormPayerIds && u.budgetFormPayerIds.length ? u.budgetFormPayerIds : [state.currentUserId]),
-        ownerId: isPersonal ? state.currentUserId : null
+        ownerId: isPersonal ? state.currentUserId : null,
+        dayId: isPersonal ? (u.budgetFormDayId || null) : null
       }] }));
     }
     u.budgetModalOpen = false; u.editingBudgetId = null;
@@ -1368,15 +1419,19 @@ function renderChecklistCard(title, cats, section, dataObj, toggleAction, labelA
 
 /* 「待辦」「行李清單」每個人各自獨立一份：第一次打開這個分頁時，用公版內容當起點自動複製一份給這個人，
    之後不管編輯／檢視權限，各自勾選、新增、刪除都只影響自己的清單，互不影響 */
+/* 記住這次瀏覽階段已經「嘗試過」自動帶入公版的 使用者:分類 組合（不管公版當時是不是空的都算嘗試過），
+   避免公版剛好沒有任何項目時，判斷條件永遠成立、每次重新渲染都再觸發一次寫入，造成無限重新渲染 */
+const seededAttempts = new Set();
 function ensurePersonalChecklistSeeded() {
   if (!state.currentUserId) return;
   const trip = findTrip();
-  // 用「這個人在這個分類底下是否已經有任何項目」來判斷要不要自動補公版內容進來（不是用另外存一個旗標），
-  // 這樣就算同一個動作被觸發好幾次，也不會重複塞入，因為只要塞過一次、判斷條件就不成立了
-  const sections = ["prep", "packing"].filter(section =>
-    !trip.personalChecklist.some(it => it.ownerId === state.currentUserId && it.section === section)
-  );
+  const sections = ["prep", "packing"].filter(section => {
+    const key = state.currentUserId + ":" + section;
+    if (seededAttempts.has(key)) return false;
+    return !trip.personalChecklist.some(it => it.ownerId === state.currentUserId && it.section === section);
+  });
   if (!sections.length) return;
+  sections.forEach(section => seededAttempts.add(state.currentUserId + ":" + section));
   mutateTrip(t => {
     const newItems = [];
     sections.forEach(section => {
@@ -1401,18 +1456,28 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   const myItems = trip.personalChecklist.filter(it => it.ownerId === state.currentUserId && it.section === section);
   const usedCats = templateCats.concat(Array.from(new Set(myItems.map(it => it.category))).filter(c => !templateCats.includes(c)));
   const canEditMine = !!state.currentUserId;
+  const editMode = canEditMine && !!state.ui.checklistEditMode[section];
   const groups = usedCats.map((cat, i) => {
     const key = "personal:" + section + ":" + cat;
     const expanded = !!state.ui.expandedGroups[key];
     const items = myItems.filter(it => it.category === cat);
-    const rows = items.map(c => `
-      <div style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:var(--radius-sm)">
-        <div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:${canEditMine ? "pointer" : "default"};width:14px;height:14px;border-radius:50%;border:1.5px solid ${c.done ? "var(--color-accent)" : "var(--color-divider)"};background:${c.done ? "var(--color-accent)" : "transparent"};flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-bg)">
+    const rows = items.map(c => {
+      const checkbox = `<div style="width:14px;height:14px;border-radius:50%;border:1.5px solid ${c.done ? "var(--color-accent)" : "var(--color-divider)"};background:${c.done ? "var(--color-accent)" : "transparent"};flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-bg)">
           ${c.done ? '<i data-lucide="check" style="width:8px;height:8px"></i>' : ""}
-        </div>
-        <input class="input input-plain" data-bind-blur="personalChecklistLabel" data-id="${c.id}" value="${esc(c.label)}" ${canEditMine ? "" : "readonly"} style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1" />
-        ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="removePersonalChecklistItem" data-id="${c.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>` : ""}
-      </div>`).join("");
+        </div>`;
+      if (!editMode) {
+        // 非編輯模式：整列都是勾選熱區，文字不能改，避免手滑點到打字欄位
+        return `<div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:${canEditMine ? "pointer" : "default"};display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:var(--radius-sm)">
+            ${checkbox}
+            <div style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1">${esc(c.label)}</div>
+          </div>`;
+      }
+      return `<div style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:var(--radius-sm)">
+        <div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:pointer">${checkbox}</div>
+        <input class="input input-plain" data-bind-blur="personalChecklistLabel" data-id="${c.id}" value="${esc(c.label)}" style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1" />
+        <div class="btn btn-icon btn-ghost" data-act="removePersonalChecklistItem" data-id="${c.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>
+      </div>`;
+    }).join("");
     return `<div style="padding:8px 0;border-bottom:${i < usedCats.length - 1 ? "1px solid var(--color-divider)" : "none"}">
         <div data-act="toggleGroupCollapse" data-id="${esc(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}</div>
@@ -1420,12 +1485,15 @@ function renderPersonalChecklistCard(title, section, gridArea) {
         </div>
         ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">
           ${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}
-          ${canEditMine ? `<div class="btn btn-ghost" data-act="addPersonalChecklistItem" data-section="${section}" data-cat="${cat}" style="font-size:12px;padding:4px 6px;justify-content:flex-start;margin-top:2px"><i data-lucide="plus" style="width:13px;height:13px"></i> 新增項目</div>` : ""}
+          ${editMode ? `<div class="btn btn-ghost" data-act="addPersonalChecklistItem" data-section="${section}" data-cat="${cat}" style="font-size:12px;padding:4px 6px;justify-content:flex-start;margin-top:2px"><i data-lucide="plus" style="width:13px;height:13px"></i> 新增項目</div>` : ""}
         </div>` : ""}
       </div>`;
   }).join("");
   return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
-      <div class="card-title" style="font-size:16px;margin-bottom:6px">${esc(title)}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div class="card-title" style="font-size:16px">${esc(title)}</div>
+        ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
+      </div>
       ${groups}
     </div>`;
 }
@@ -1493,6 +1561,7 @@ function renderItinerary(trip, day) {
         ${it.alert ? `<div style="font-size:12.5px;line-height:1.7;font-weight:600;color:var(--color-danger,#c0392b);margin-top:6px;margin-left:40px">⚠️ ${esc(it.alert)}</div>` : ""}
         ${it.note ? `<div style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px">${esc(it.note)}</div>` : ""}
         ${it.docs && it.docs.length ? `<div data-act="openDocGallery" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="paperclip" style="width:12px;height:12px"></i> 行程資料（${it.docs.length}）</div>` : ""}
+        ${canEdit && trip.days.length > 1 ? `<div data-act="openMoveItemModal" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="calendar-days" style="width:12px;height:12px"></i> 移到別天</div>` : ""}
       ` : "";
       const thumbSize = canEdit ? 52 : 88;
       const thumb = imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24 });
@@ -1508,7 +1577,7 @@ function renderItinerary(trip, day) {
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               <div style="width:32px;height:32px;border-radius:50%;background:${meta.tagBg};display:flex;align-items:center;justify-content:center;flex:none">
-                <i data-lucide="${meta.icon}" style="width:16px;height:16px;color:${meta.tagFg}"></i>
+                ${categoryIconSvg(meta.icon, 16, meta.tagFg)}
               </div>
               <div style="font-size:15.5px;font-weight:700;font-family:var(--font-body);flex:1;min-width:80px">${esc(it.title)}</div>
             </div>
@@ -1590,6 +1659,8 @@ function renderBudget(trip) {
         const color = PEOPLE_COLORS[p.colorIdx % PEOPLE_COLORS.length];
         return `<div data-act="${rowCanEdit ? "toggleBudgetPayer" : ""}" data-id="${b.id}" data-person="${p.id}" title="${esc(p.name)}${active ? "（需付款）" : ""}" style="cursor:${rowCanEdit ? "pointer" : "default"};width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex:none;color:${active ? "#fff" : "var(--color-neutral-400)"};background:${active ? color : "transparent"};border:1.5px solid ${active ? color : "var(--color-divider)"}">${esc(p.initial)}</div>`;
       }).join("");
+      const dayLabel = isPersonalCat && b.dayId ? (trip.days.find(d => d.id === b.dayId) || {}).index : null;
+      const rows2 = null; // no-op placeholder to keep diff minimal
       return `
       <div style="padding:6px 2px;font-size:13px">
         <div style="display:flex;align-items:center;gap:6px">
@@ -1597,12 +1668,13 @@ function renderBudget(trip) {
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="down" data-id="${b.id}" style="cursor:pointer;opacity:${i < items.length - 1 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></div>
           </div>` : ""}
+          ${dayLabel ? `<div style="flex:none;font-size:10.5px;font-weight:700;color:var(--color-accent-700);background:var(--color-accent-100,var(--color-surface));border:1px solid var(--color-accent-200,var(--color-divider));border-radius:4px;padding:1px 5px">D${dayLabel}</div>` : ""}
           <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:none">${payerRow}</div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding-left:${rowCanEdit && !isPersonalCat ? "18px" : "0"}">
           <div style="display:flex;align-items:baseline;gap:6px;flex:none;text-align:left">
-            <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />/人</div>
+            <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />${isPersonalCat ? "" : "/人"}</div>
             ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">${convertedText}</div>` : ""}
           </div>
           <div style="display:flex;gap:2px;flex:none">
@@ -1767,6 +1839,7 @@ function renderModals(trip) {
         <div class="dialog-title">${isEditing ? "編輯花費" : "新增花費"}</div>
         <div class="field"><label>分類</label><select class="input" id="bf-category" ${isPersonalForm ? "disabled" : ""}>${opts}</select>${isPersonalForm ? '<input type="hidden" id="bf-category-personal" value="個人" />' : ""}</div>
         <div class="field"><label>項目名稱</label><input class="input" id="bf-label" value="${esc(u.budgetFormLabel)}" placeholder="例：飯店住宿費" /></div>
+        ${isPersonalForm ? `<div class="field"><label>屬於第幾天</label><select class="input" id="bf-day">${['<option value="">不指定</option>'].concat(trip.days.map(d => `<option value="${d.id}" ${u.budgetFormDayId === d.id ? "selected" : ""}>Day ${d.index} · ${esc(d.dateLabel)}${d.title ? "（" + esc(d.title) + "）" : ""}</option>`)).join("")}</select></div>` : ""}
         <div style="display:flex;gap:10px">
           <div class="field" style="flex:1"><label>金額${isPersonalForm ? "" : "（每人）"}</label><input class="input" id="bf-amount" type="number" value="${esc(u.budgetFormAmount)}" placeholder="0" /></div>
           <div class="field" style="flex:1"><label>幣別</label><select class="input" id="bf-currency">${currencyOpts}</select></div>
@@ -1892,6 +1965,29 @@ function renderModals(trip) {
         <div class="dialog-title">跟哪一天互換？</div>
         <div style="font-size:12px;opacity:.6;margin-bottom:6px">會把兩天的標題和行程項目整組交換，日期本身不會變動</div>
         <div style="display:flex;flex-direction:column;gap:6px">${rows || '<div style="opacity:.5;font-size:13px">沒有其他天可以互換</div>'}</div>
+        <div class="dialog-actions">
+          <div class="btn btn-secondary" data-act="closeModal">取消</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  if (state.ui.moveItemId) {
+    const currentItem = trip.days.flatMap(d => d.items).find(it => it.id === state.ui.moveItemId);
+    const currentDay = trip.days.find(d => d.items.some(it => it.id === state.ui.moveItemId));
+    const otherDays = trip.days.filter(d => !currentDay || d.id !== currentDay.id);
+    const rows = otherDays.map(d => `
+      <div data-act="moveItemToDay" data-id="${d.id}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:var(--radius-sm);background:var(--color-surface)">
+        <div>
+          <div style="font-size:10.5px;opacity:.6">Day ${d.index} · ${esc(d.dateLabel)}</div>
+          <div style="font-size:13px;font-weight:600">${esc(d.title || "（未命名）")}</div>
+        </div>
+        <i data-lucide="chevron-right" style="width:14px;height:14px;opacity:.6"></i>
+      </div>`).join("");
+    html += `
+    <div class="dialog-backdrop" data-act="closeModal">
+      <div class="dialog" data-stop-click>
+        <div class="dialog-title">把「${esc(currentItem ? currentItem.title : "")}」移到哪一天？</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${rows || '<div style="opacity:.5;font-size:13px">沒有其他天可以移動</div>'}</div>
         <div class="dialog-actions">
           <div class="btn btn-secondary" data-act="closeModal">取消</div>
         </div>
@@ -2065,6 +2161,7 @@ function initEvents() {
       case "togglePersonalCheck": actions.togglePersonalCheck(id); break;
       case "addPersonalChecklistItem": actions.addPersonalChecklistItem(actEl.getAttribute("data-section"), actEl.getAttribute("data-cat")); break;
       case "removePersonalChecklistItem": actions.removePersonalChecklistItem(id); break;
+      case "toggleChecklistEditMode": actions.toggleChecklistEditMode(actEl.getAttribute("data-section")); break;
       case "addDocument": actions.addDocument(); break;
       case "removeDocument": actions.removeDocument(id); break;
       case "reorderBudget": reorderViaChevron("budget", actEl); break;
@@ -2072,6 +2169,8 @@ function initEvents() {
       case "selectDay": actions.selectDay(id); break;
       case "openSwapDayModal": actions.openSwapDayModal(); break;
       case "swapDays": actions.swapDays(id); break;
+      case "openMoveItemModal": actions.openMoveItemModal(id); break;
+      case "moveItemToDay": actions.moveItemToDay(id); break;
       case "setFilter": actions.setFilter(id); break;
       case "openAddItem": actions.openAddItem(); break;
       case "openEditItem": {
@@ -2125,6 +2224,8 @@ function initEvents() {
         const currencyEl = document.getElementById("bf-currency");
         state.ui.budgetFormCurrency = currencyEl ? currencyEl.value : "TWD";
         state.ui.budgetFormPayerIds = Array.from(document.querySelectorAll(".bf-payer-check:checked")).map(el => el.value);
+        const dayEl = document.getElementById("bf-day");
+        state.ui.budgetFormDayId = dayEl ? dayEl.value : "";
         actions.saveBudget();
         break;
       }
