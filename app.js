@@ -374,7 +374,7 @@ function defaultUiState() {
     editingMemoTag: null,
     swapDayModalOpen: false,
     checklistEditMode: {},
-    packingViewMode: "category",
+    packingViewMode: "tag",
     sharedTodoTab: "group",
     sharedTodoEditMode: false,
     prepMainTab: "todo",
@@ -859,7 +859,7 @@ const actions = {
     if (!state.currentUserId) return;
     const hasChecked = findTrip().personalChecklist.some(it => it.ownerId === state.currentUserId && it.section === "packing" && it.done);
     if (!hasChecked) return;
-    if (!window.confirm("確定要把行李清單全部取消勾選嗎？方便你重新收拾行李、再確認一次。")) return;
+    if (!window.confirm("確定要全部取消勾選嗎? 方便你重新確認一次行李內容")) return;
     mutateTrip(t => ({ ...t, personalChecklist: t.personalChecklist.map(it => (it.ownerId === state.currentUserId && it.section === "packing") ? { ...it, done: false } : it) }));
     render(true);
   },
@@ -1803,22 +1803,22 @@ function renderSharedTodoCard(trip) {
   const primary = isPrimaryEditor();
   const editMode = primary && state.ui.sharedTodoEditMode;
   const items = sharedTodo[tab] || [];
-  const usedCats = PREP_CATS.concat(Array.from(new Set(items.map(it => it.category))).filter(c => c && !PREP_CATS.includes(c)));
+  // 檢視狀態下只顯示「實際有項目」的分類（例如個人分頁沒有票券項目就不顯示票券）；
+  // 編輯模式下把所有分類都列出來，主揪才能對空分類新增項目
+  const catsWithItems = Array.from(new Set(items.map(it => it.category || "其他")));
+  const usedCats = editMode
+    ? PREP_CATS.concat(catsWithItems.filter(c => !PREP_CATS.includes(c)))
+    : PREP_CATS.filter(c => catsWithItems.includes(c)).concat(catsWithItems.filter(c => !PREP_CATS.includes(c)));
 
   const groups = usedCats.map((cat, i) => {
-    const key = "shared:" + tab + ":" + cat;
-    const expanded = !!state.ui.expandedGroups[key];
     const catItems = items.filter(it => (it.category || "其他") === cat);
     const rows = catItems.map(it => renderSharedTodoRow(it, tab, editMode)).join("");
     return `<div style="padding:8px 0;border-bottom:${i < usedCats.length - 1 ? "1px solid var(--color-divider)" : "none"}">
-        <div data-act="toggleGroupCollapse" data-id="${esc(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}${CATEGORY_NOTE[cat] ? `<span style="font-weight:400;opacity:.55;font-size:11px"> ${esc(CATEGORY_NOTE[cat])}</span>` : ""}</div>
-          <i data-lucide="${expanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px;color:var(--color-accent-700)"></i>
-        </div>
-        ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">
+        <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}${CATEGORY_NOTE[cat] ? `<span style="font-weight:400;opacity:.55;font-size:11px"> ${esc(CATEGORY_NOTE[cat])}</span>` : ""}</div>
+        <div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">
           ${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}
           ${editMode ? `<div class="btn btn-ghost" data-act="addSharedTodoItem" data-tab="${tab}" data-cat="${esc(cat)}" style="font-size:12px;padding:4px 6px;justify-content:flex-start;margin-top:2px"><i data-lucide="plus" style="width:13px;height:13px"></i> 新增項目</div>` : ""}
-        </div>` : ""}
+        </div>
       </div>`;
   }).join("");
 
@@ -2031,7 +2031,7 @@ function renderBudget(trip) {
       const dayLabel = isPersonalCat && b.dayId ? (trip.days.find(d => d.id === b.dayId) || {}).index : null;
       const rows2 = null; // no-op placeholder to keep diff minimal
       return `
-      <div style="padding:6px 2px;font-size:13px">
+      <div style="padding:3px 2px;font-size:13px">
         <div style="display:flex;align-items:center;gap:6px">
           ${rowCanEdit && !isPersonalCat ? `<div style="display:flex;flex-direction:column;flex:none">
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
@@ -2041,7 +2041,7 @@ function renderBudget(trip) {
           <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:none">${payerRow}</div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding-left:${rowCanEdit && !isPersonalCat ? "18px" : "0"}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px;padding-left:${rowCanEdit && !isPersonalCat ? "18px" : "0"}">
           <div style="display:flex;align-items:baseline;gap:6px;flex:none;text-align:left">
             <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />${isPersonalCat ? "" : "/人"}</div>
             ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">${convertedText}</div>` : ""}
