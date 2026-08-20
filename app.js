@@ -1621,7 +1621,10 @@ function applyPackingSafetyRule(item) {
 function ensurePersonalChecklistSeeded() {
   if (!state.currentUserId) return;
   const trip = findTrip();
-  const sections = ["prep", "packing"].filter(section => {
+  // 「私人待辦」現在是完全自由的筆記區，不套公版、不自動補項目——只有「行李清單」還需要
+  // 用公版起始清單。如果不排除 prep，使用者刪光自己的私人待辦後，只要重新整理頁面
+  // 就會又被套用一次舊的 trip.prep 範本內容，跟現在「私人待辦預設空白」的設計互相矛盾。
+  const sections = ["packing"].filter(section => {
     const key = state.currentUserId + ":" + section;
     if (seededAttempts.has(key)) return false;
     return !trip.personalChecklist.some(it => it.ownerId === state.currentUserId && it.section === section);
@@ -2031,7 +2034,7 @@ function renderBudget(trip) {
       const dayLabel = isPersonalCat && b.dayId ? (trip.days.find(d => d.id === b.dayId) || {}).index : null;
       const rows2 = null; // no-op placeholder to keep diff minimal
       return `
-      <div style="padding:3px 2px;font-size:13px">
+      <div style="padding:2px;font-size:13px">
         <div style="display:flex;align-items:center;gap:6px">
           ${rowCanEdit && !isPersonalCat ? `<div style="display:flex;flex-direction:column;flex:none">
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
@@ -2041,7 +2044,7 @@ function renderBudget(trip) {
           <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:none">${payerRow}</div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px;padding-left:${rowCanEdit && !isPersonalCat ? "18px" : "0"}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:1px;padding-left:${rowCanEdit && !isPersonalCat ? "18px" : "0"}">
           <div style="display:flex;align-items:baseline;gap:6px;flex:none;text-align:left">
             <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />${isPersonalCat ? "" : "/人"}</div>
             ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">${convertedText}</div>` : ""}
@@ -2054,22 +2057,20 @@ function renderBudget(trip) {
       </div>`;
     }).join("");
     const canAddPersonal = isPersonalCat && !!state.currentUserId;
-    return `<div class="card card-bordered">
+    return `<div class="card card-bordered" style="${isPersonalCat ? "background:color-mix(in srgb, var(--color-accent) 7%, var(--color-bg))" : ""}">
         <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--color-divider)">
           <div class="card-title" style="font-size:11.5px;letter-spacing:.08em">${esc(cat)}<span style="opacity:.6;font-weight:400;letter-spacing:normal"> · ${isPersonalCat ? "自行編輯項目，不會與旅伴同步" : "由主揪統一規劃"}</span></div>
           <div style="font-size:13px;color:var(--color-neutral-600);display:flex;align-items:baseline;gap:5px">小計 <span style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(subtotalTWD)}</span></div>
         </div>
-        ${rows || '<div style="font-size:12.5px;opacity:.5;padding:4px 2px">尚無花費</div>'}
+        <div style="display:flex;flex-direction:column">
+          ${rows || '<div style="font-size:12.5px;opacity:.5;padding:4px 2px">尚無花費</div>'}
+        </div>
         ${canAddPersonal ? `<div class="btn btn-ghost" data-act="openAddPersonalBudget" style="font-size:12.5px;margin-top:6px"><i data-lucide="plus" style="width:14px;height:14px"></i> 新增我的項目</div>` : ""}
       </div>`;
   }).join("");
 
   return `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);flex-wrap:wrap;gap:8px">
-      <div style="font-size:14px;opacity:.7">此次行程預算</div>
-      ${canManage ? `<div class="btn btn-accent-outline" data-act="openAddBudget"><i data-lucide="plus" style="width:15px;height:15px"></i> 新增花費</div>` : ""}
-    </div>
-    <div class="card elev-md" style="padding:var(--space-4);margin-bottom:var(--space-4);flex-direction:row;align-items:center;justify-content:space-between;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);gap:8px">
       <div style="min-width:0">
         <div class="card-title" style="font-size:16px">合計</div>
         <div style="font-size:11px;color:var(--color-neutral-500);margin-top:2px">僅計入你需要付款的項目</div>
@@ -2080,7 +2081,8 @@ function renderBudget(trip) {
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:var(--space-3)">${groupsHtml}</div>
-    ${state.fx ? `<div style="text-align:center;margin-top:var(--space-4);font-size:11px;color:var(--color-neutral-400)">匯率資料來源：<a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" style="color:inherit">ExchangeRate-API</a></div>` : ""}`;
+    ${state.fx ? `<div style="text-align:center;margin-top:var(--space-4);font-size:11px;color:var(--color-neutral-400)">匯率資料來源：<a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" style="color:inherit">ExchangeRate-API</a></div>` : ""}
+    ${canManage ? `<div class="fab" data-act="openAddBudget" title="新增花費"><i data-lucide="plus" style="width:24px;height:24px"></i></div>` : ""}`;
 }
 
 /* ---------------------------------------------------------------------- */
