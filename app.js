@@ -2028,46 +2028,69 @@ function renderBudget(trip) {
       if (!(b.payerIds || []).includes(state.currentUserId)) return sum;
       return sum + (toTWD(b.amount, b.currency || "TWD") || 0);
     }, 0);
-    const rows = items.map((b, i) => {
-      const cur = b.currency || "TWD";
-      const convertedText = convertedTextForItem(b, trip);
-      const rowCanEdit = canEditBudgetItem(b);
-      const rowCanRemove = canRemoveBudgetItem(b);
-      const payerRow = isPersonalCat ? "" : state.collaborators.map(p => {
-        const active = (b.payerIds || []).includes(p.id);
-        const color = PEOPLE_COLORS[p.colorIdx % PEOPLE_COLORS.length];
-        return `<div data-act="${rowCanEdit ? "toggleBudgetPayer" : ""}" data-id="${b.id}" data-person="${p.id}" title="${esc(p.name)}${active ? "（需付款）" : ""}" style="cursor:${rowCanEdit ? "pointer" : "default"};width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex:none;color:${active ? "#fff" : "var(--color-neutral-400)"};background:${active ? color : "transparent"};border:1.5px solid ${active ? color : "var(--color-divider)"}">${esc(p.initial)}</div>`;
-      }).join("");
-      const dayLabel = isPersonalCat && b.dayId ? (trip.days.find(d => d.id === b.dayId) || {}).index : null;
-      if (isPersonalCat) {
-        // 個人項目：單行呈現，價格緊接在項目文字右邊，換算數字再緊接在價格右邊，不要分開兩行、也不要拉開距離
-        return `
-      <div style="display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:13px">
-          ${dayLabel ? `<div style="flex:none;font-size:10.5px;font-weight:700;color:var(--color-accent-700);background:var(--color-accent-100,var(--color-surface));border:1px solid var(--color-accent-200,var(--color-divider));border-radius:4px;padding:1px 5px">D${dayLabel}</div>` : ""}
+    const rows = isPersonalCat ? (() => {
+      // 依日期分組：同一天的項目底下不用每行都重複顯示 D1，只在這組最上面顯示一次
+      const dayGroups = [];
+      const dayGroupMap = new Map();
+      items.forEach(b => {
+        const idx = b.dayId ? ((trip.days.find(d => d.id === b.dayId) || {}).index || null) : null;
+        const key = idx != null ? idx : "none";
+        if (!dayGroupMap.has(key)) {
+          const g = { key, idx, items: [] };
+          dayGroupMap.set(key, g);
+          dayGroups.push(g);
+        }
+        dayGroupMap.get(key).items.push(b);
+      });
+      dayGroups.sort((a, b) => {
+        if (a.key === "none") return 1;
+        if (b.key === "none") return -1;
+        return a.idx - b.idx;
+      });
+      return dayGroups.map(g => {
+        const header = g.key !== "none" ? `<div style="font-size:10.5px;font-weight:700;color:var(--color-accent-700);margin:8px 0 2px 2px">D${g.idx}</div>` : "";
+        const itemRows = g.items.map(b => {
+          const cur = b.currency || "TWD";
+          const convertedText = convertedTextForItem(b, trip);
+          const rowCanEdit = canEditBudgetItem(b);
+          const rowCanRemove = canRemoveBudgetItem(b);
+          // 個人項目：單行呈現。項目文字吃掉剩餘空間、金額欄位縮窄，價格自然被推到比較右邊的位置
+          return `
+      <div style="display:flex;align-items:center;gap:8px;padding:3px 2px;font-size:13px">
           <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:0" />
-          <div style="display:flex;align-items:baseline;gap:2px;flex:none;font-family:var(--font-body);font-weight:700;opacity:.85;white-space:nowrap">${currencySymbol(cur)}<input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:62px;font-family:var(--font-body);font-weight:700" /></div>
+          <div style="display:flex;align-items:baseline;gap:2px;flex:none;font-family:var(--font-body);font-weight:700;opacity:.85;white-space:nowrap;margin-left:6px">${currencySymbol(cur)}<input class="input input-plain input-amount input-amount-sm" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:52px;font-family:var(--font-body);font-weight:700" /></div>
           ${convertedText ? `<div style="font-size:10.5px;color:var(--color-neutral-500);white-space:nowrap;flex:none">${convertedText}</div>` : ""}
           <div style="display:flex;gap:2px;flex:none">
             ${rowCanEdit ? `<div class="btn btn-icon btn-ghost" data-act="openEditBudget" data-id="${b.id}"><i data-lucide="pencil" style="width:13px;height:13px"></i></div>` : ""}
             ${rowCanRemove ? `<div class="btn btn-icon btn-ghost" data-act="removeBudget" data-id="${b.id}"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
           </div>
         </div>`;
-      }
-      const rows2 = null; // no-op placeholder to keep diff minimal
+        }).join("");
+        return header + itemRows;
+      }).join("");
+    })() : items.map((b, i) => {
+      const cur = b.currency || "TWD";
+      const convertedText = convertedTextForItem(b, trip);
+      const rowCanEdit = canEditBudgetItem(b);
+      const rowCanRemove = canRemoveBudgetItem(b);
+      const payerRow = state.collaborators.map(p => {
+        const active = (b.payerIds || []).includes(p.id);
+        const color = PEOPLE_COLORS[p.colorIdx % PEOPLE_COLORS.length];
+        return `<div data-act="${rowCanEdit ? "toggleBudgetPayer" : ""}" data-id="${b.id}" data-person="${p.id}" title="${esc(p.name)}${active ? "（需付款）" : ""}" style="cursor:${rowCanEdit ? "pointer" : "default"};width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex:none;color:${active ? "#fff" : "var(--color-neutral-400)"};background:${active ? color : "transparent"};border:1.5px solid ${active ? color : "var(--color-divider)"}">${esc(p.initial)}</div>`;
+      }).join("");
       return `
       <div style="padding:2px;font-size:13px">
         <div style="display:flex;align-items:center;gap:6px">
-          ${rowCanEdit && !isPersonalCat ? `<div style="display:flex;flex-direction:column;flex:none">
+          ${rowCanEdit ? `<div style="display:flex;flex-direction:column;flex:none">
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="up" data-id="${b.id}" style="cursor:pointer;opacity:${i > 0 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-up" style="width:11px;height:11px"></i></div>
             <div data-act="reorderBudget" data-cat="${cat}" data-dir="down" data-id="${b.id}" style="cursor:pointer;opacity:${i < items.length - 1 ? 1 : 0.25};line-height:0"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></div>
           </div>` : ""}
-          ${dayLabel ? `<div style="flex:none;font-size:10.5px;font-weight:700;color:var(--color-accent-700);background:var(--color-accent-100,var(--color-surface));border:1px solid var(--color-accent-200,var(--color-divider));border-radius:4px;padding:1px 5px">D${dayLabel}</div>` : ""}
           <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:40px" />
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;flex:none">${payerRow}</div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:1px;padding-left:${rowCanEdit && !isPersonalCat ? "18px" : "0"}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:1px;padding-left:${rowCanEdit ? "18px" : "0"}">
           <div style="display:flex;align-items:baseline;gap:6px;flex:none;text-align:left">
-            <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />${isPersonalCat ? "" : "/人"}</div>
+            <div style="display:flex;align-items:center;gap:2px;font-family:var(--font-body);font-weight:700;opacity:.85">${currencySymbol(cur)} <input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:78px;font-family:var(--font-body);font-weight:700" />/人</div>
             ${convertedText ? `<div style="font-size:11px;color:var(--color-neutral-500);white-space:nowrap">${convertedText}</div>` : ""}
           </div>
           <div style="display:flex;gap:2px;flex:none">
