@@ -1835,7 +1835,7 @@ function renderSharedTodoCard(trip) {
   }).join("");
 
   const tabBar = `<div style="display:flex;gap:4px;flex:none">
-      <div class="tab-pill" data-act="setSharedTodoTab" data-tab="group" style="padding:5px 12px;font-size:11.5px;background:${tab === "group" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "group" ? "var(--color-bg)" : "var(--color-text)"}">團體</div>
+      <div class="tab-pill" data-act="setSharedTodoTab" data-tab="group" style="padding:5px 12px;font-size:11.5px;background:${tab === "group" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "group" ? "var(--color-bg)" : "var(--color-text)"}">主揪統籌</div>
       <div class="tab-pill" data-act="setSharedTodoTab" data-tab="personal" style="padding:5px 12px;font-size:11.5px;background:${tab === "personal" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "personal" ? "var(--color-bg)" : "var(--color-text)"}">個人</div>
     </div>`;
 
