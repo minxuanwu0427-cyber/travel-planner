@@ -1695,7 +1695,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   /* 待辦（私人）現在是完全自由的筆記區：沒有公版、沒有分類，旅伴想記什麼就自己新增 */
   if (!isPacking) {
     const rows = myItems.map(c => renderChecklistRow(c, editMode, canEditMine, section)).join("");
-    return `<div>
+    return `<div style="background:var(--color-accent-100);border-radius:var(--radius-lg);padding:var(--space-4)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px">
           <div class="card-title" style="font-size:16px">${esc(title)}</div>
           ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
@@ -1756,7 +1756,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
       <div style="position:absolute;top:2px;left:${viewMode === "tag" ? "18px" : "2px"};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s ease"></div>
     </div>` : "";
   const uncheckAllBtn = isPacking ? `<div class="btn btn-icon btn-ghost" data-act="uncheckAllPacking" title="全部取消勾選，重新收拾行李"><i data-lucide="rotate-ccw" style="width:15px;height:15px"></i></div>` : "";
-  return `<div ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
+  return `<div style="background:var(--color-accent-100);border-radius:var(--radius-lg);padding:var(--space-4)${gridArea ? `;grid-area:${gridArea}` : ""}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${isPacking ? "8px" : "6px"};gap:6px">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <div class="card-title" style="font-size:16px">${esc(title)}</div>
@@ -1839,7 +1839,7 @@ function renderSharedTodoCard(trip) {
       <div class="tab-pill" data-act="setSharedTodoTab" data-tab="personal" style="padding:5px 12px;font-size:11.5px;background:${tab === "personal" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "personal" ? "var(--color-bg)" : "var(--color-text)"}">個人</div>
     </div>`;
 
-  return `<div style="padding-bottom:var(--space-4);margin-bottom:var(--space-4);border-bottom:1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)">
+  return `<div style="background:var(--color-accent-100);border-radius:var(--radius-lg);padding:var(--space-4);margin-bottom:var(--space-3)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
           <div class="card-title" style="font-size:16px">全體進度</div>
@@ -1875,7 +1875,7 @@ function renderPrep(trip) {
 
   const packingContent = renderPersonalChecklistCard("行李清單", "packing");
 
-  const notesContent = `<div>
+  const notesContent = `<div style="background:var(--color-accent-100);border-radius:var(--radius-lg);padding:var(--space-4)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px">
         <div class="card-title" style="font-size:16px">注意事項</div>
         ${isPrimaryEditor() ? `<div class="btn btn-ghost" data-act="resetPrepNotes" style="font-size:11px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成公版</div>` : ""}
@@ -1887,7 +1887,7 @@ function renderPrep(trip) {
 
   return `
   ${folderTabs}
-  <div style="background:var(--color-accent-100);border-radius:0 var(--radius-lg) var(--radius-lg) var(--radius-lg);padding:var(--space-4);margin-top:-1px">
+  <div style="margin-top:-1px">
     ${contentByTab[mainTab]}
   </div>`;
 }
