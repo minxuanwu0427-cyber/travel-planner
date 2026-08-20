@@ -361,6 +361,8 @@ function defaultUiState() {
     swapDayModalOpen: false,
     checklistEditMode: {},
     packingViewMode: "category",
+    sharedTodoTab: "group",
+    sharedTodoEditMode: false,
     moveItemId: null
   };
 }
@@ -396,7 +398,8 @@ function normalizeTrip(trip, legacyCollaborators) {
     })),
     memoItems: (trip.memoItems || []).map(m => ({ ...m, currency: m.currency || "TWD" })),
     personalChecklist: trip.personalChecklist || [],
-    documents: trip.documents || []
+    documents: trip.documents || [],
+    sharedTodo: trip.sharedTodo || { group: [], personal: [] }
   };
 }
 
@@ -642,6 +645,7 @@ const actions = {
       days, packing: buildDefaultPackingTemplate(),
       prep: buildDefaultPrepTemplate(),
       budget: [], memoTags: [], memoItems: [], personalChecklist: [], documents: [],
+      sharedTodo: { group: [], personal: [] },
       collaborators, createdAt: Date.now()
     };
     // 樂觀更新：先在本機把新行程加進列表並切換過去，不用等 Firestore 回應才看得到
@@ -858,6 +862,77 @@ const actions = {
     if (!isPrimaryEditor()) return;
     if (!window.confirm("確定要用最新公版覆蓋這個行程的「待辦」「行李清單」範本嗎？\n\n只會影響之後新加入、還沒建立過自己清單的旅伴；已經有自己清單的人不會被動到。")) return;
     mutateTrip(t => ({ ...t, prep: buildDefaultPrepTemplate(), packing: buildDefaultPackingTemplate() }));
+    render(true);
+  },
+  resetPrepNotes() {
+    if (!isPrimaryEditor()) return;
+    if (!window.confirm("確定要用公版內容覆蓋目前的「注意事項」文字嗎？目前寫的內容會被取代。")) return;
+    mutateTrip(t => ({ ...t, notes: DEFAULT_PREP_NOTES }));
+    render(true);
+  },
+
+  /* 待辦(共用區)：團體（大家共用同一個打勾狀態，只有主揪能操作）／個人（項目共用，但每個人各自打勾，可看到誰打了勾） */
+  setSharedTodoTab(tab) {
+    state.ui.sharedTodoTab = tab;
+    render(true);
+  },
+  toggleSharedTodoEditMode() {
+    if (!isPrimaryEditor()) return;
+    state.ui.sharedTodoEditMode = !state.ui.sharedTodoEditMode;
+    render(true);
+  },
+  toggleSharedGroupItem(id) {
+    if (!isPrimaryEditor()) return;
+    mutateTrip(t => {
+      const sharedTodo = t.sharedTodo || { group: [], personal: [] };
+      return { ...t, sharedTodo: { ...sharedTodo, group: sharedTodo.group.map(it => it.id === id ? { ...it, done: !it.done } : it) } };
+    });
+    render();
+  },
+  toggleSharedPersonalItem(id) {
+    if (!state.currentUserId) return;
+    mutateTrip(t => {
+      const sharedTodo = t.sharedTodo || { group: [], personal: [] };
+      return {
+        ...t,
+        sharedTodo: {
+          ...sharedTodo,
+          personal: sharedTodo.personal.map(it => {
+            if (it.id !== id) return it;
+            const checkedBy = it.checkedBy || [];
+            const has = checkedBy.includes(state.currentUserId);
+            return { ...it, checkedBy: has ? checkedBy.filter(x => x !== state.currentUserId) : [...checkedBy, state.currentUserId] };
+          })
+        }
+      };
+    });
+    render();
+  },
+  addSharedTodoItem(tab) {
+    if (!isPrimaryEditor()) return;
+    const label = (window.prompt("新增項目名稱") || "").trim();
+    if (!label) return;
+    const newItem = tab === "personal" ? { id: uid("sp"), label, checkedBy: [] } : { id: uid("sg"), label, done: false };
+    mutateTrip(t => {
+      const sharedTodo = t.sharedTodo || { group: [], personal: [] };
+      return { ...t, sharedTodo: { ...sharedTodo, [tab]: [...sharedTodo[tab], newItem] } };
+    });
+    render();
+  },
+  removeSharedTodoItem(tab, id) {
+    if (!isPrimaryEditor()) return;
+    mutateTrip(t => {
+      const sharedTodo = t.sharedTodo || { group: [], personal: [] };
+      return { ...t, sharedTodo: { ...sharedTodo, [tab]: sharedTodo[tab].filter(it => it.id !== id) } };
+    });
+    render();
+  },
+  setSharedTodoLabel(tab, id, val) {
+    if (!isPrimaryEditor()) return;
+    mutateTrip(t => {
+      const sharedTodo = t.sharedTodo || { group: [], personal: [] };
+      return { ...t, sharedTodo: { ...sharedTodo, [tab]: sharedTodo[tab].map(it => it.id === id ? { ...it, label: val } : it) } };
+    });
     render(true);
   },
 
@@ -1557,8 +1632,8 @@ function renderChecklistRow(c, editMode, canEditMine, section) {
   if (!editMode) {
     return `<div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:${canEditMine ? "pointer" : "default"};display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:var(--radius-sm)">
         ${checkbox}
-        <div style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1">${esc(c.label)}</div>
         ${bagBadge}
+        <div style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1">${esc(c.label)}</div>
       </div>`;
   }
   const tagChips = isPacking ? `<div style="display:flex;align-items:center;gap:4px;margin-left:20px;margin-top:2px;flex-wrap:wrap">
@@ -1589,6 +1664,13 @@ function renderPersonalChecklistCard(title, section, gridArea) {
     const key = "personal:" + section + ":" + cat;
     const expanded = !!state.ui.expandedGroups[key];
     const items = myItems.filter(it => it.category === cat);
+    if (isPacking) {
+      items.sort((a, b) => {
+        const ia = a.bagTag ? BAG_TAGS.indexOf(a.bagTag) : BAG_TAGS.length;
+        const ib = b.bagTag ? BAG_TAGS.indexOf(b.bagTag) : BAG_TAGS.length;
+        return ia - ib;
+      });
+    }
     const rows = items.map(c => renderChecklistRow(c, editMode, canEditMine, section)).join("");
     return `<div style="padding:8px 0;border-bottom:${i < usedCats.length - 1 ? "1px solid var(--color-divider)" : "none"}">
         <div data-act="toggleGroupCollapse" data-id="${esc(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
@@ -1619,22 +1701,85 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   }).join("");
 
   const groups = viewMode === "tag" ? groupsByTag : groupsByCategory;
-  // toggle switch 樣式：一個藥丸型軌道，兩邊各佔一半，選到哪邊哪邊就用主色填滿、滑塊效果用位移做出來
+  // iOS 風格開關：純圖示的滑塊，不放文字/圖案在滑塊裡；關＝原分類、開＝依標籤（隨身/登機/託運）分類
   const viewToggle = isPacking ? `
-    <div style="position:relative;display:flex;background:var(--color-surface);border-radius:999px;padding:2px;width:180px;flex:none">
-      <div style="position:absolute;top:2px;bottom:2px;left:${viewMode === "category" ? "2px" : "50%"};width:calc(50% - 2px);background:var(--color-accent);border-radius:999px;transition:left .15s ease"></div>
-      <div data-act="setPackingViewMode" data-mode="category" style="position:relative;flex:1;text-align:center;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer;color:${viewMode === "category" ? "var(--color-bg)" : "var(--color-neutral-500)"}">原分類</div>
-      <div data-act="setPackingViewMode" data-mode="tag" style="position:relative;flex:1;text-align:center;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer;color:${viewMode === "tag" ? "var(--color-bg)" : "var(--color-neutral-500)"}">隨身/登機/託運</div>
+    <div data-act="setPackingViewMode" data-mode="${viewMode === "tag" ? "category" : "tag"}" title="${viewMode === "tag" ? "切換回原分類" : "切換成依隨身/登機/託運分類"}" style="position:relative;width:38px;height:22px;border-radius:999px;flex:none;cursor:pointer;background:${viewMode === "tag" ? "var(--color-accent)" : "var(--color-neutral-300)"};transition:background .15s ease">
+      <div style="position:absolute;top:2px;left:${viewMode === "tag" ? "18px" : "2px"};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s ease"></div>
     </div>` : "";
   const uncheckAllBtn = isPacking ? `<div class="btn btn-icon btn-ghost" data-act="uncheckAllPacking" title="全部取消勾選，重新收拾行李"><i data-lucide="rotate-ccw" style="width:15px;height:15px"></i></div>` : "";
   return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${isPacking ? "8px" : "6px"};gap:6px">
         <div class="card-title" style="font-size:16px">${esc(title)}</div>
-        ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
+        <div style="display:flex;align-items:center;gap:8px;flex:none">
+          ${viewToggle}
+          ${uncheckAllBtn}
+          ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
+        </div>
       </div>
-      ${isPacking ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">${viewToggle}${uncheckAllBtn}</div>` : ""}
       ${editMode && canEditMine ? `<div class="btn btn-ghost" data-act="resetMyChecklist" data-section="${section}" style="font-size:11px;opacity:.7;margin-bottom:8px"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 清空重新套用最新公版</div>` : ""}
       ${groups}
+    </div>`;
+}
+
+/* 待辦(共用區)：團體（單一勾選狀態、只有主揪能操作）／個人（項目共用，但各自打勾，可看到誰打了勾） */
+function renderSharedTodoCard(trip) {
+  const sharedTodo = trip.sharedTodo || { group: [], personal: [] };
+  const tab = state.ui.sharedTodoTab === "personal" ? "personal" : "group";
+  const primary = isPrimaryEditor();
+  const editMode = primary && state.ui.sharedTodoEditMode;
+  const items = sharedTodo[tab] || [];
+
+  const rows = items.length ? items.map(it => {
+    if (tab === "group") {
+      const checked = !!it.done;
+      const clickable = primary;
+      const checkbox = `<div ${clickable ? `data-act="toggleSharedGroupItem" data-id="${it.id}"` : ""} style="cursor:${clickable ? "pointer" : "default"};width:16px;height:16px;border-radius:50%;border:1.5px solid ${checked ? "var(--color-accent)" : "var(--color-divider)"};background:${checked ? "var(--color-accent)" : "transparent"};flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-bg)">
+          ${checked ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ""}
+        </div>`;
+      const labelHtml = editMode
+        ? `<input class="input input-plain" data-bind-blur="sharedTodoLabel" data-cat="group" data-id="${it.id}" value="${esc(it.label)}" style="font-size:13px;text-decoration:${checked ? "line-through" : "none"};opacity:${checked ? 0.55 : 1};flex:1" />`
+        : `<div style="font-size:13px;text-decoration:${checked ? "line-through" : "none"};opacity:${checked ? 0.55 : 1};flex:1">${esc(it.label)}</div>`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px">
+          ${checkbox}${labelHtml}
+          ${editMode ? `<div class="btn btn-icon btn-ghost" data-act="removeSharedTodoItem" data-tab="group" data-id="${it.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>` : ""}
+        </div>`;
+    } else {
+      const checkedBy = it.checkedBy || [];
+      const iChecked = state.currentUserId && checkedBy.includes(state.currentUserId);
+      const clickable = !!state.currentUserId;
+      const checkbox = `<div ${clickable ? `data-act="toggleSharedPersonalItem" data-id="${it.id}"` : ""} style="cursor:${clickable ? "pointer" : "default"};width:16px;height:16px;border-radius:50%;border:1.5px solid ${iChecked ? "var(--color-accent)" : "var(--color-divider)"};background:${iChecked ? "var(--color-accent)" : "transparent"};flex:none;display:flex;align-items:center;justify-content:center;color:var(--color-bg)">
+          ${iChecked ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ""}
+        </div>`;
+      const labelHtml = editMode
+        ? `<input class="input input-plain" data-bind-blur="sharedTodoLabel" data-cat="personal" data-id="${it.id}" value="${esc(it.label)}" style="font-size:13px;flex:1" />`
+        : `<div style="font-size:13px;flex:1">${esc(it.label)}</div>`;
+      const avatars = checkedBy.map(pid => {
+        const p = state.collaborators.find(c => c.id === pid);
+        if (!p) return "";
+        return avatar(p.initial, PEOPLE_COLORS[p.colorIdx % PEOPLE_COLORS.length], 18);
+      }).join("");
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px">
+          ${checkbox}${labelHtml}
+          ${avatars ? `<div style="display:flex;gap:2px;margin-right:2px">${avatars}</div>` : ""}
+          ${editMode ? `<div class="btn btn-icon btn-ghost" data-act="removeSharedTodoItem" data-tab="personal" data-id="${it.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>` : ""}
+        </div>`;
+    }
+  }).join("") : `<div style="font-size:12px;opacity:0.5;padding:10px 2px">尚無項目</div>`;
+
+  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:8px">
+      <div data-act="setSharedTodoTab" data-tab="group" style="cursor:pointer;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${tab === "group" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "group" ? "var(--color-bg)" : "var(--color-text)"}">團體</div>
+      <div data-act="setSharedTodoTab" data-tab="personal" style="cursor:pointer;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${tab === "personal" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "personal" ? "var(--color-bg)" : "var(--color-text)"}">個人</div>
+    </div>`;
+
+  return `<div class="card card-bordered" style="margin-bottom:var(--space-3)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:6px">
+        <div class="card-title" style="font-size:16px">待辦（共用區）</div>
+        ${primary ? `<div class="btn btn-icon btn-ghost" data-act="toggleSharedTodoEditMode" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
+      </div>
+      ${tabBar}
+      <div style="font-size:11px;opacity:.6;margin-bottom:4px">${tab === "group" ? "團體項目大家共用同一個勾選狀態，只有主揪能打勾" : "個人項目大家共用清單，但各自打勾，主揪可以看到誰已完成"}</div>
+      <div style="display:flex;flex-direction:column">${rows}</div>
+      ${editMode ? `<div class="btn btn-ghost" data-act="addSharedTodoItem" data-tab="${tab}" style="font-size:12px;padding:6px;justify-content:flex-start;margin-top:4px"><i data-lucide="plus" style="width:13px;height:13px"></i> 新增項目</div>` : ""}
     </div>`;
 }
 
@@ -1644,11 +1789,15 @@ function renderPrep(trip) {
   ensurePersonalChecklistSeeded();
   trip = findTrip();
   return `
+  ${renderSharedTodoCard(trip)}
   ${canReset ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div class="btn btn-ghost" data-act="resetPrepTemplate" style="font-size:11.5px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成最新公版</div></div>` : ""}
   <div class="prep-grid">
-    ${renderPersonalChecklistCard("待辦", "prep", "todo")}
+    ${renderPersonalChecklistCard("待辦（私人）", "prep", "todo")}
     <div class="card card-bordered" style="grid-area:notes">
-      <div class="card-title" style="font-size:16px;margin-bottom:10px">注意事項</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px">
+        <div class="card-title" style="font-size:16px">注意事項</div>
+        ${isPrimaryEditor() ? `<div class="btn btn-ghost" data-act="resetPrepNotes" style="font-size:11px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成公版</div>` : ""}
+      </div>
       <textarea class="input" data-bind-blur="notes" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(trip.notes, 6)}" style="font-size:13px;line-height:1.85;height:auto" placeholder="出入境、託運行李等提醒">${esc(trip.notes)}</textarea>
     </div>
     ${renderPersonalChecklistCard("行李清單", "packing", "packing")}
@@ -2309,6 +2458,13 @@ function initEvents() {
       case "uncheckAllPacking": actions.uncheckAllPacking(); break;
       case "setPersonalItemBagTag": actions.setPersonalItemBagTag(id, actEl.getAttribute("data-tag")); break;
       case "resetPrepTemplate": actions.resetPrepTemplate(); break;
+      case "resetPrepNotes": actions.resetPrepNotes(); break;
+      case "setSharedTodoTab": actions.setSharedTodoTab(actEl.getAttribute("data-tab")); break;
+      case "toggleSharedTodoEditMode": actions.toggleSharedTodoEditMode(); break;
+      case "toggleSharedGroupItem": actions.toggleSharedGroupItem(id); break;
+      case "toggleSharedPersonalItem": actions.toggleSharedPersonalItem(id); break;
+      case "addSharedTodoItem": actions.addSharedTodoItem(actEl.getAttribute("data-tab")); break;
+      case "removeSharedTodoItem": actions.removeSharedTodoItem(actEl.getAttribute("data-tab"), id); break;
       case "addDocument": actions.addDocument(); break;
       case "removeDocument": actions.removeDocument(id); break;
       case "reorderBudget": reorderViaChevron("budget", actEl); break;
@@ -2609,6 +2765,7 @@ function handleFieldCommit(e) {
     case "prepLabel": actions.setPrepLabel(el.getAttribute("data-cat"), id, val); break;
     case "packingLabel": actions.setPackingLabel(el.getAttribute("data-cat"), id, val); break;
     case "personalChecklistLabel": actions.setPersonalChecklistLabel(id, val); break;
+    case "sharedTodoLabel": actions.setSharedTodoLabel(el.getAttribute("data-cat"), id, val); break;
     case "documentTitle": actions.setDocumentTitle(id, val); break;
     case "documentNote": actions.setDocumentNote(id, val); break;
     case "memoTagName": actions.saveMemoTag(id, val); break;
