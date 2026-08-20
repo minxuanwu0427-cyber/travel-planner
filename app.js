@@ -1516,7 +1516,7 @@ function renderDocumentsCard(trip) {
         </div>
         ${noteExpanded
           ? `<textarea class="input input-plain" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 1)}" style="font-size:12px;line-height:1.6;height:auto;opacity:.8" placeholder="補充說明">${esc(d.note)}</textarea>`
-          : (d.note ? `<div data-act="toggleGroupCollapse" data-id="${esc(noteKey)}" style="cursor:pointer;font-size:11.5px;color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.note)}</div>` : "")}
+          : ""}
         ${canManage ? `<div style="display:flex;justify-content:flex-end"><div class="btn btn-icon btn-ghost" data-act="removeDocument" data-id="${d.id}"><i data-lucide="trash-2" style="width:13px;height:13px"></i></div></div>` : ""}
       </div>`;
   }).join("");
@@ -2039,6 +2039,20 @@ function renderBudget(trip) {
         return `<div data-act="${rowCanEdit ? "toggleBudgetPayer" : ""}" data-id="${b.id}" data-person="${p.id}" title="${esc(p.name)}${active ? "（需付款）" : ""}" style="cursor:${rowCanEdit ? "pointer" : "default"};width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex:none;color:${active ? "#fff" : "var(--color-neutral-400)"};background:${active ? color : "transparent"};border:1.5px solid ${active ? color : "var(--color-divider)"}">${esc(p.initial)}</div>`;
       }).join("");
       const dayLabel = isPersonalCat && b.dayId ? (trip.days.find(d => d.id === b.dayId) || {}).index : null;
+      if (isPersonalCat) {
+        // 個人項目：單行呈現，價格緊接在項目文字右邊，換算數字再緊接在價格右邊，不要分開兩行、也不要拉開距離
+        return `
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:13px">
+          ${dayLabel ? `<div style="flex:none;font-size:10.5px;font-weight:700;color:var(--color-accent-700);background:var(--color-accent-100,var(--color-surface));border:1px solid var(--color-accent-200,var(--color-divider));border-radius:4px;padding:1px 5px">D${dayLabel}</div>` : ""}
+          <input class="input input-plain" data-bind-blur="budgetLabel" data-id="${b.id}" value="${esc(b.label)}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;flex:1;min-width:0" />
+          <div style="display:flex;align-items:baseline;gap:2px;flex:none;font-family:var(--font-body);font-weight:700;opacity:.85;white-space:nowrap">${currencySymbol(cur)}<input class="input input-plain input-amount" type="number" data-bind-blur="budgetAmount" data-id="${b.id}" value="${b.amount}" ${rowCanEdit ? "" : "readonly"} style="font-size:13px;width:62px;font-family:var(--font-body);font-weight:700" /></div>
+          ${convertedText ? `<div style="font-size:10.5px;color:var(--color-neutral-500);white-space:nowrap;flex:none">${convertedText}</div>` : ""}
+          <div style="display:flex;gap:2px;flex:none">
+            ${rowCanEdit ? `<div class="btn btn-icon btn-ghost" data-act="openEditBudget" data-id="${b.id}"><i data-lucide="pencil" style="width:13px;height:13px"></i></div>` : ""}
+            ${rowCanRemove ? `<div class="btn btn-icon btn-ghost" data-act="removeBudget" data-id="${b.id}"><i data-lucide="x" style="width:13px;height:13px"></i></div>` : ""}
+          </div>
+        </div>`;
+      }
       const rows2 = null; // no-op placeholder to keep diff minimal
       return `
       <div style="padding:2px;font-size:13px">
