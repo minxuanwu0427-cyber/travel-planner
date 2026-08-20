@@ -1506,10 +1506,17 @@ function renderDocumentsCard(trip) {
   const items = trip.documents || [];
   const rows = items.map(d => {
     const photoDisplay = imageSlot("doc-" + d.id, "上傳圖片", { style: "width:100%;height:90px", radius: 6 });
+    const noteKey = "docnote:" + d.id;
+    const noteExpanded = !!state.ui.expandedGroups[noteKey];
     return `<div class="card card-bordered" style="padding:var(--space-3);gap:6px">
         ${photoDisplay}
-        <input class="input input-plain" data-bind-blur="documentTitle" data-id="${d.id}" value="${esc(d.title)}" ${canEdit ? "" : "readonly"} style="font-size:13.5px;font-weight:700" />
-        <textarea class="input input-plain" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 1)}" style="font-size:12px;line-height:1.6;height:auto;opacity:.8" placeholder="補充說明">${esc(d.note)}</textarea>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input class="input input-plain" data-bind-blur="documentTitle" data-id="${d.id}" value="${esc(d.title)}" ${canEdit ? "" : "readonly"} style="font-size:13.5px;font-weight:700;flex:1" />
+          <div data-act="toggleGroupCollapse" data-id="${esc(noteKey)}" title="${noteExpanded ? "收合說明" : "展開說明"}" style="cursor:pointer;flex:none;color:var(--color-neutral-500);padding:2px"><i data-lucide="${noteExpanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px"></i></div>
+        </div>
+        ${noteExpanded
+          ? `<textarea class="input input-plain" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 1)}" style="font-size:12px;line-height:1.6;height:auto;opacity:.8" placeholder="補充說明">${esc(d.note)}</textarea>`
+          : (d.note ? `<div data-act="toggleGroupCollapse" data-id="${esc(noteKey)}" style="cursor:pointer;font-size:11.5px;color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.note)}</div>` : "")}
         ${canManage ? `<div style="display:flex;justify-content:flex-end"><div class="btn btn-icon btn-ghost" data-act="removeDocument" data-id="${d.id}"><i data-lucide="trash-2" style="width:13px;height:13px"></i></div></div>` : ""}
       </div>`;
   }).join("");
@@ -1751,9 +1758,11 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   const uncheckAllBtn = isPacking ? `<div class="btn btn-icon btn-ghost" data-act="uncheckAllPacking" title="全部取消勾選，重新收拾行李"><i data-lucide="rotate-ccw" style="width:15px;height:15px"></i></div>` : "";
   return `<div class="card card-bordered" ${gridArea ? `style="grid-area:${gridArea}"` : ""}>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${isPacking ? "8px" : "6px"};gap:6px">
-        <div class="card-title" style="font-size:16px">${esc(title)}</div>
-        <div style="display:flex;align-items:center;gap:8px;flex:none">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <div class="card-title" style="font-size:16px">${esc(title)}</div>
           ${viewToggle}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex:none">
           ${uncheckAllBtn}
           ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
         </div>
@@ -1846,7 +1855,6 @@ function renderSharedTodoCard(trip) {
 
 function renderPrep(trip) {
   const canEdit = canEditGeneral();
-  const canReset = isPrimaryEditor();
   ensurePersonalChecklistSeeded();
   trip = findTrip();
   const mainTab = ["todo", "packing", "notes"].includes(state.ui.prepMainTab) ? state.ui.prepMainTab : "todo";
@@ -1878,7 +1886,6 @@ function renderPrep(trip) {
   const contentByTab = { todo: todoContent, packing: packingContent, notes: notesContent };
 
   return `
-  ${canReset ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><div class="btn btn-ghost" data-act="resetPrepTemplate" style="font-size:11.5px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成最新公版</div></div>` : ""}
   ${folderTabs}
   <div style="margin-top:6px">
     ${contentByTab[mainTab]}
