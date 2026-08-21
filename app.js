@@ -375,7 +375,7 @@ function defaultUiState() {
     swapDayModalOpen: false,
     checklistEditMode: {},
     packingViewMode: "tag",
-    sharedTodoTab: "group",
+    sharedTodoTab: "personal",
     sharedTodoEditMode: false,
     prepMainTab: "todo",
     moveItemId: null
@@ -1563,7 +1563,7 @@ function renderOverview(trip) {
           <i data-lucide="plane" style="width:17px;height:17px;color:var(--color-accent)"></i>
           <div class="card-title" style="font-size:16px">航班資訊</div>
         </div>
-        <div style="font-size:13px;line-height:1.85;display:flex;flex-direction:column;gap:8px">
+        <div class="overview-text-block" style="font-size:13px;line-height:1.85;display:flex;flex-direction:column;gap:8px">
           <div style="display:flex;align-items:center;gap:6px">去程<input class="input input-plain" data-bind-blur="flightOut" value="${esc(trip.flight.out)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1" /></div>
           <div style="display:flex;align-items:center;gap:6px">回程<input class="input input-plain" data-bind-blur="flightBack" value="${esc(trip.flight.back)}" ${canEdit ? "" : "readonly"} style="font-size:13px;flex:1" /></div>
         </div>
@@ -1580,7 +1580,7 @@ function renderOverview(trip) {
         <i data-lucide="bed" style="width:17px;height:17px;color:var(--color-accent)"></i>
         <div class="card-title" style="font-size:16px">住宿一覽</div>
       </div>
-      <div style="font-size:13px;line-height:1.85">${staysHtml || '<div style="opacity:.5;font-size:13px">尚無住宿資料，在行程裡新增「住宿」類別的項目就會自動出現在這裡</div>'}</div>
+      <div class="overview-text-block" style="font-size:13px;line-height:1.85">${staysHtml || '<div style="opacity:.5;font-size:13px">尚無住宿資料，在行程裡新增「住宿」類別的項目就會自動出現在這裡</div>'}</div>
     </div>
     ${renderDocumentsCard(trip)}
   </div>`;
@@ -1683,7 +1683,7 @@ function renderChecklistRow(c, editMode, canEditMine, section) {
     return `<div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:${canEditMine ? "pointer" : "default"};display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:var(--radius-sm)">
         ${checkbox}
         ${bagBadge}
-        <div style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1">${esc(c.label)}</div>
+        <div style="font-size:14px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1">${esc(c.label)}</div>
       </div>`;
   }
   const tagChips = isPacking ? `<div style="display:flex;align-items:center;gap:4px;margin-left:20px;margin-top:2px;flex-wrap:wrap">
@@ -1694,7 +1694,7 @@ function renderChecklistRow(c, editMode, canEditMine, section) {
   return `<div style="padding:2px 0">
       <div style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:var(--radius-sm)">
         <div data-act="togglePersonalCheck" data-id="${c.id}" style="cursor:pointer">${checkbox}</div>
-        <input class="input input-plain" data-bind-blur="personalChecklistLabel" data-id="${c.id}" value="${esc(c.label)}" style="font-size:13px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1" />
+        <input class="input input-plain" data-bind-blur="personalChecklistLabel" data-id="${c.id}" value="${esc(c.label)}" style="font-size:14px;text-decoration:${c.done ? "line-through" : "none"};opacity:${c.done ? 0.55 : 1};flex:1" />
         <div class="btn btn-icon btn-ghost" data-act="removePersonalChecklistItem" data-id="${c.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>
       </div>
       ${tagChips}
@@ -1738,7 +1738,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
     const rows = items.map(c => renderChecklistRow(c, editMode, canEditMine, section)).join("");
     return `<div style="padding:8px 0;border-bottom:${i < usedCats.length - 1 ? "1px solid var(--color-divider)" : "none"}">
         <div data-act="toggleGroupCollapse" data-id="${esc(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}${CATEGORY_NOTE[cat] ? `<span style="font-weight:400;opacity:.55;font-size:11px"> ${esc(CATEGORY_NOTE[cat])}</span>` : ""}</div>
+          <div style="font-size:14px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}${CATEGORY_NOTE[cat] ? `<span style="font-weight:400;opacity:.55;font-size:12px"> ${esc(CATEGORY_NOTE[cat])}</span>` : ""}</div>
           <i data-lucide="${expanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px;color:var(--color-accent-700)"></i>
         </div>
         ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">
@@ -1757,7 +1757,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
     const rows = items.map(c => renderChecklistRow(c, editMode, canEditMine, section)).join("");
     return `<div style="padding:8px 0;border-bottom:${i < tagGroupNames.length - 1 ? "1px solid var(--color-divider)" : "none"}">
         <div data-act="toggleGroupCollapse" data-id="${esc(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:12.5px;font-weight:700">${TAG_EMOJI[tag] || ""} ${esc(tag)}（${items.length}）</div>
+          <div style="font-size:14px;font-weight:700">${TAG_EMOJI[tag] || ""} ${esc(tag)}（${items.length}）</div>
           <i data-lucide="${expanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px;color:var(--color-accent-700)"></i>
         </div>
         ${expanded ? `<div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}</div>` : ""}
@@ -1797,8 +1797,8 @@ function renderSharedTodoRow(it, tab, editMode) {
         ${checked ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ""}
       </div>`;
     const labelHtml = editMode
-      ? `<input class="input input-plain" data-bind-blur="sharedTodoLabel" data-cat="group" data-id="${it.id}" value="${esc(it.label)}" style="font-size:13px;text-decoration:${checked ? "line-through" : "none"};opacity:${checked ? 0.55 : 1};flex:1" />`
-      : `<div style="font-size:13px;text-decoration:${checked ? "line-through" : "none"};opacity:${checked ? 0.55 : 1};flex:1">${esc(it.label)}</div>`;
+      ? `<input class="input input-plain" data-bind-blur="sharedTodoLabel" data-cat="group" data-id="${it.id}" value="${esc(it.label)}" style="font-size:14px;text-decoration:${checked ? "line-through" : "none"};opacity:${checked ? 0.55 : 1};flex:1" />`
+      : `<div style="font-size:14px;text-decoration:${checked ? "line-through" : "none"};opacity:${checked ? 0.55 : 1};flex:1">${esc(it.label)}</div>`;
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px">
         ${checkbox}${labelHtml}
         ${editMode ? `<div class="btn btn-icon btn-ghost" data-act="removeSharedTodoItem" data-tab="group" data-id="${it.id}" style="width:22px;height:22px;flex:none"><i data-lucide="x" style="width:12px;height:12px"></i></div>` : ""}
@@ -1811,8 +1811,8 @@ function renderSharedTodoRow(it, tab, editMode) {
       ${iChecked ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ""}
     </div>`;
   const labelHtml = editMode
-    ? `<input class="input input-plain" data-bind-blur="sharedTodoLabel" data-cat="personal" data-id="${it.id}" value="${esc(it.label)}" style="font-size:13px;flex:1" />`
-    : `<div style="font-size:13px;flex:1">${esc(it.label)}</div>`;
+    ? `<input class="input input-plain" data-bind-blur="sharedTodoLabel" data-cat="personal" data-id="${it.id}" value="${esc(it.label)}" style="font-size:14px;flex:1" />`
+    : `<div style="font-size:14px;flex:1">${esc(it.label)}</div>`;
   const avatars = checkedBy.map(pid => {
     const p = state.collaborators.find(c => c.id === pid);
     if (!p) return "";
@@ -1841,7 +1841,7 @@ function renderSharedTodoCard(trip) {
     const catItems = items.filter(it => (it.category || "其他") === cat);
     const rows = catItems.map(it => renderSharedTodoRow(it, tab, editMode)).join("");
     return `<div style="padding:8px 0;border-bottom:${i < usedCats.length - 1 ? "1px solid var(--color-divider)" : "none"}">
-        <div style="font-size:12.5px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}${CATEGORY_NOTE[cat] ? `<span style="font-weight:400;opacity:.55;font-size:11px"> ${esc(CATEGORY_NOTE[cat])}</span>` : ""}</div>
+        <div style="font-size:14px;font-weight:700">${CATEGORY_EMOJI[cat] ? CATEGORY_EMOJI[cat] + " " : ""}${esc(cat)}${CATEGORY_NOTE[cat] ? `<span style="font-weight:400;opacity:.55;font-size:12px"> ${esc(CATEGORY_NOTE[cat])}</span>` : ""}</div>
         <div style="display:flex;flex-direction:column;gap:1px;margin-top:6px">
           ${rows || '<div style="font-size:12px;opacity:0.5;padding:4px 2px">尚無項目</div>'}
           ${editMode ? `<div class="btn btn-ghost" data-act="addSharedTodoItem" data-tab="${tab}" data-cat="${esc(cat)}" style="font-size:12px;padding:4px 6px;justify-content:flex-start;margin-top:2px"><i data-lucide="plus" style="width:13px;height:13px"></i> 新增項目</div>` : ""}
@@ -1874,10 +1874,10 @@ function renderPrep(trip) {
   trip = findTrip();
   const mainTab = ["todo", "packing", "notes"].includes(state.ui.prepMainTab) ? state.ui.prepMainTab : "todo";
 
-  const folderTabs = `<div class="seg">
-      <label class="seg-opt ${mainTab === "todo" ? "active" : ""}" data-act="setPrepMainTab" data-tab="todo">待辦</label>
-      <label class="seg-opt ${mainTab === "packing" ? "active" : ""}" data-act="setPrepMainTab" data-tab="packing">行李</label>
-      <label class="seg-opt ${mainTab === "notes" ? "active" : ""}" data-act="setPrepMainTab" data-tab="notes">注意事項</label>
+  const folderTabs = `<div style="display:flex;gap:8px">
+      <div data-act="setPrepMainTab" data-tab="todo" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:1;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "todo" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "todo" ? "var(--color-bg)" : "var(--color-text)"}">待辦</div>
+      <div data-act="setPrepMainTab" data-tab="packing" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:1;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "packing" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "packing" ? "var(--color-bg)" : "var(--color-text)"}">行李</div>
+      <div data-act="setPrepMainTab" data-tab="notes" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:1;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "notes" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "notes" ? "var(--color-bg)" : "var(--color-text)"}">注意事項</div>
     </div>`;
 
   const todoContent = `
@@ -2114,7 +2114,7 @@ function renderBudget(trip) {
     const canAddPersonal = isPersonalCat && !!state.currentUserId;
     return `<div class="card card-bordered" style="${isPersonalCat ? "background:color-mix(in srgb, var(--color-accent) 7%, var(--color-bg))" : ""}">
         <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--color-divider)">
-          <div class="card-title" style="font-size:11.5px;letter-spacing:.08em">${esc(cat)}<span style="opacity:.6;font-weight:400;letter-spacing:normal"> · ${isPersonalCat ? "自行編輯項目，不會與旅伴同步" : "由主揪統一規劃"}</span></div>
+          <div class="card-title" style="font-size:13px;letter-spacing:.08em">${esc(cat)}<span style="opacity:.6;font-weight:400;letter-spacing:normal"> · ${isPersonalCat ? "自行編輯項目，不會與旅伴同步" : "由主揪統一規劃"}</span></div>
           <div style="font-size:13px;color:var(--color-neutral-600);display:flex;align-items:baseline;gap:5px">小計 <span style="font-size:14px;font-weight:700;color:var(--color-accent-700);font-family:var(--font-body)">NT$ ${fmtMoney(subtotalTWD)}</span></div>
         </div>
         <div style="display:flex;flex-direction:column">
@@ -2191,11 +2191,11 @@ function renderMemo(trip) {
   }).join("");
 
   return `
-    <div style="font-size:12.5px;opacity:.6;margin-bottom:var(--space-3);line-height:1.6">這是你的個人清單，只有你看得到<br />（其他旅伴看不到你的項目，你也看不到他們的）</div>
     <div class="tag-scroll-row" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px;margin-bottom:10px">
       ${filtersHtml}
       <div class="btn btn-ghost" data-act="addMemoTag" style="font-size:12.5px;flex:none;white-space:nowrap"><i data-lucide="tag" style="width:14px;height:14px"></i> 新增分類</div>
     </div>
+    <div style="font-size:12.5px;opacity:.6;margin-bottom:var(--space-3);line-height:1.6">這是你的個人清單，只有你看得到<br />（其他旅伴看不到你的項目，你也看不到他們的）</div>
     <div class="fab" data-act="openAddMemo" title="新增備忘項目"><i data-lucide="plus" style="width:24px;height:24px"></i></div>
     <div class="memo-grid">${cardsHtml || ""}</div>
     ${visible.length === 0 ? '<div style="padding:var(--space-6) 0;opacity:.6;font-size:13.5px">這個分類還沒有項目</div>' : ""}
