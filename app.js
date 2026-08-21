@@ -1875,9 +1875,9 @@ function renderPrep(trip) {
   const mainTab = ["todo", "packing", "notes"].includes(state.ui.prepMainTab) ? state.ui.prepMainTab : "todo";
 
   const folderTabs = `<div style="display:flex;gap:8px">
-      <div data-act="setPrepMainTab" data-tab="todo" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:1;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "todo" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "todo" ? "var(--color-bg)" : "var(--color-text)"}">待辦</div>
-      <div data-act="setPrepMainTab" data-tab="packing" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:1;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "packing" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "packing" ? "var(--color-bg)" : "var(--color-text)"}">行李</div>
-      <div data-act="setPrepMainTab" data-tab="notes" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:1;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "notes" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "notes" ? "var(--color-bg)" : "var(--color-text)"}">注意事項</div>
+      <div data-act="setPrepMainTab" data-tab="todo" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:none;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "todo" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "todo" ? "var(--color-bg)" : "var(--color-text)"}">待辦</div>
+      <div data-act="setPrepMainTab" data-tab="packing" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:none;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "packing" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "packing" ? "var(--color-bg)" : "var(--color-text)"}">行李</div>
+      <div data-act="setPrepMainTab" data-tab="notes" style="cursor:pointer;padding:9px 16px;border-radius:var(--radius-sm);flex:none;text-align:center;font-size:13px;font-weight:700;background:${mainTab === "notes" ? "var(--color-accent)" : "var(--color-surface)"};color:${mainTab === "notes" ? "var(--color-bg)" : "var(--color-text)"}">注意事項</div>
     </div>`;
 
   const todoContent = `
