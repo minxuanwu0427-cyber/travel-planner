@@ -174,7 +174,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 /* ---------- itinerary timeline ---------- */
 .timeline { position: relative; padding-left: 24px; }
 .timeline-rail { position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--color-divider); }
-.timeline-dot { position: absolute; left: -24px; top: 16px; width: 13px; height: 13px; border-radius: 50%; background: var(--color-bg); border: 3px solid var(--color-accent); z-index: 1; }
+.timeline-dot { position: absolute; left: -22.5px; top: 16px; width: 13px; height: 13px; border-radius: 50%; background: var(--color-bg); border: 3px solid var(--color-accent); z-index: 1; }
 .item-card { border-radius: var(--radius-lg); flex-direction: row; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
 .item-card.backup { border: 1px dashed var(--color-divider); background: var(--color-surface); box-shadow: none; }
 .item-card.normal { border: 1px solid var(--color-divider); background: var(--color-bg); box-shadow: var(--shadow-sm); }
@@ -222,6 +222,8 @@ textarea.input { min-height: 90px; resize: vertical; }
   body { font-size: 14px; }
   /* iOS Safari 會在輸入框文字小於 16px 時自動放大畫面，這裡強制所有輸入框維持 16px 避免跳出縮放 */
   input.input, textarea.input, select.input { font-size: 16px !important; }
+  /* 總覽頁「航班資訊」「住宿一覽」的說明文字跟上面輸入框保持一致大小，避免手機上文字忽大忽小 */
+  .overview-text-block { font-size: 16px !important; }
   .input-amount { width: 90px !important; }
   .input-amount-sm { width: 52px !important; }
   .input-amount-sm::-webkit-inner-spin-button, .input-amount-sm::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
