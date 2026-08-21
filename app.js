@@ -1553,7 +1553,7 @@ function renderOverview(trip) {
   const staysHtml = autoStays.map((s, i) => `
     <div style="display:flex;align-items:center;gap:4px;padding:6px 0;border-bottom:${i < autoStays.length - 1 ? "1px solid var(--color-divider)" : "none"}">
       <span style="flex:none">${esc(s.range)}（${s.nights}晚）</span>
-      <span style="font-size:13px;flex:1">${esc(s.name)}</span>
+      <span style="flex:1">${esc(s.name)}</span>
     </div>`).join("");
 
   return `
