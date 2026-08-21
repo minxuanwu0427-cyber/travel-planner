@@ -1052,6 +1052,13 @@ const actions = {
     render();
   },
   setDayTitle(dayId, val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, days: t.days.map(d => d.id === dayId ? { ...d, title: val } : d) })); render(true); },
+  renameDayTitle(dayId) {
+    if (!canEditGeneral()) return;
+    const day = findTrip().days.find(d => d.id === dayId);
+    const val = window.prompt("為這天下個標題，例如：國際通", (day && day.title) || "");
+    if (val === null) return;
+    this.setDayTitle(dayId, val.trim());
+  },
   toggleItemExpanded(id) {
     state.ui.expandedItemIds = state.ui.expandedItemIds.includes(id) ? state.ui.expandedItemIds.filter(x => x !== id) : [...state.ui.expandedItemIds, id];
     render(true);
@@ -1764,7 +1771,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
       <div style="position:absolute;top:2px;left:${viewMode === "tag" ? "18px" : "2px"};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s ease"></div>
     </div>` : "";
   const uncheckAllBtn = isPacking ? `<div class="btn btn-icon btn-ghost" data-act="uncheckAllPacking" title="全部取消勾選，重新收拾行李"><i data-lucide="rotate-ccw" style="width:15px;height:15px"></i></div>` : "";
-  return `<div style="background:var(--color-bg);border:1.5px solid var(--color-accent-300);border-radius:var(--radius-lg);padding:var(--space-4)${gridArea ? `;grid-area:${gridArea}` : ""}">
+  return `<div class="card card-bordered" style="margin-top:var(--space-4)${gridArea ? `;grid-area:${gridArea}` : ""}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${isPacking ? "8px" : "6px"};gap:6px">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <div class="card-title" style="font-size:16px">${esc(title)}</div>
@@ -1867,14 +1874,10 @@ function renderPrep(trip) {
   trip = findTrip();
   const mainTab = ["todo", "packing", "notes"].includes(state.ui.prepMainTab) ? state.ui.prepMainTab : "todo";
 
-  const folderTab = (tab, label) => {
-    const active = mainTab === tab;
-    return `<div data-act="setPrepMainTab" data-tab="${tab}" style="cursor:pointer;padding:9px 22px;border-radius:14px 14px 0 0;font-size:13.5px;font-weight:700;background:${active ? "var(--color-bg)" : "var(--color-surface)"};color:${active ? "var(--color-accent-700)" : "var(--color-neutral-500)"};position:relative;${active ? "border:1.5px solid var(--color-accent-300);border-bottom:none" : ""}">${esc(label)}</div>`;
-  };
-  const folderTabs = `<div style="display:flex;gap:4px;padding-left:2px;position:relative;z-index:1">
-      ${folderTab("todo", "待辦")}
-      ${folderTab("packing", "行李")}
-      ${folderTab("notes", "注意事項")}
+  const folderTabs = `<div class="seg">
+      <label class="seg-opt ${mainTab === "todo" ? "active" : ""}" data-act="setPrepMainTab" data-tab="todo">待辦</label>
+      <label class="seg-opt ${mainTab === "packing" ? "active" : ""}" data-act="setPrepMainTab" data-tab="packing">行李</label>
+      <label class="seg-opt ${mainTab === "notes" ? "active" : ""}" data-act="setPrepMainTab" data-tab="notes">注意事項</label>
     </div>`;
 
   const todoContent = `
@@ -1883,7 +1886,7 @@ function renderPrep(trip) {
 
   const packingContent = renderPersonalChecklistCard("行李清單", "packing");
 
-  const notesContent = `<div style="background:var(--color-bg);border:1.5px solid var(--color-accent-300);border-radius:var(--radius-lg);padding:var(--space-4)">
+  const notesContent = `<div class="card card-bordered" style="margin-top:var(--space-4)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px">
         <div class="card-title" style="font-size:16px">注意事項</div>
         ${isPrimaryEditor() ? `<div class="btn btn-ghost" data-act="resetPrepNotes" style="font-size:11px;opacity:.7"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> 重置成公版</div>` : ""}
@@ -1895,7 +1898,7 @@ function renderPrep(trip) {
 
   return `
   ${folderTabs}
-  <div style="margin-top:-1px">
+  <div>
     ${contentByTab[mainTab]}
   </div>`;
 }
@@ -1991,14 +1994,16 @@ function renderItinerary(trip, day) {
 
   return `
     <div class="chip-row" style="margin-bottom:var(--space-3)">${dayChips}</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:var(--space-4);flex-wrap:wrap">
-      <input class="input input-plain" data-bind-blur="dayTitle" value="${esc(day.title || "")}" ${canEdit ? "" : "readonly"} placeholder="標題" title="為這天下個標題，例如：國際通" style="font-size:14px;font-weight:600;width:96px;flex:none" />
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:var(--space-4);flex-wrap:wrap">
       <div class="seg">
         <label class="seg-opt ${state.itineraryFilter === "all" ? "active" : ""}" data-act="setFilter" data-id="all">總覽</label>
         <label class="seg-opt ${state.itineraryFilter === "transit" ? "active" : ""}" data-act="setFilter" data-id="transit">交通</label>
         <label class="seg-opt ${state.itineraryFilter === "stay" ? "active" : ""}" data-act="setFilter" data-id="stay">住宿</label>
       </div>
-      ${canEdit && trip.days.length > 1 ? `<div class="btn btn-secondary" data-act="openSwapDayModal" style="font-size:12px;flex:none"><i data-lucide="repeat" style="width:13px;height:13px"></i> 跟別天互換</div>` : ""}
+      <div style="display:flex;align-items:center;gap:6px;flex:none">
+        ${canEdit ? `<div class="btn btn-icon btn-ghost" data-act="renameDayTitle" data-id="${day.id}" title="${day.title ? "改標題：" + day.title : "為這天下個標題"}"><i data-lucide="tag" style="width:15px;height:15px"></i></div>` : ""}
+        ${canEdit && trip.days.length > 1 ? `<div class="btn btn-secondary" data-act="openSwapDayModal" style="font-size:12px;flex:none"><i data-lucide="repeat" style="width:13px;height:13px"></i> 跟別天互換</div>` : ""}
+      </div>
     </div>
     ${canEdit ? `<div class="fab" data-act="openAddItem" title="新增行程"><i data-lucide="plus" style="width:24px;height:24px"></i></div>` : ""}
     <div class="timeline">
@@ -2603,6 +2608,7 @@ function initEvents() {
       case "reorderMemo": reorderMemoViaChevron(actEl); break;
       case "selectDay": actions.selectDay(id); break;
       case "openSwapDayModal": actions.openSwapDayModal(); break;
+      case "renameDayTitle": actions.renameDayTitle(actEl.getAttribute("data-id")); break;
       case "swapDays": actions.swapDays(id); break;
       case "openMoveItemModal": actions.openMoveItemModal(id); break;
       case "moveItemToDay": actions.moveItemToDay(id); break;
@@ -2901,7 +2907,7 @@ function handleFieldCommit(e) {
     case "documentTitle": actions.setDocumentTitle(id, val); break;
     case "documentNote": actions.setDocumentNote(id, val); break;
     case "memoTagName": actions.saveMemoTag(id, val); break;
-    case "dayTitle": actions.setDayTitle(state.activeDayId, val); break;
+      case "dayTitle": actions.setDayTitle(state.activeDayId, val); break;
     case "budgetLabel": actions.setBudgetLabel(id, val); break;
     case "budgetAmount": actions.setBudgetAmount(id, val); break;
     case "collab.name": actions.saveCollabName(val); break;
