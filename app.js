@@ -398,8 +398,11 @@ function normalizeTrip(trip, legacyCollaborators) {
     if (parsed) { dateStart = dateStart || dateToIso(parsed.start); dateEnd = dateEnd || dateToIso(parsed.end); }
   }
   // 舊資料可能還沒有「每個行程自己的旅伴名單」（改版前所有行程共用同一份旅伴）——
-  // 沒有的話先用舊的共用名單當起始值，之後每個行程就能各自增減旅伴
-  const collaborators = (trip.collaborators && trip.collaborators.length)
+  // 沒有的話先用舊的共用名單當起始值，之後每個行程就能各自增減旅伴。
+  // 注意：只有在完全「沒有這個欄位」時才視為舊資料、套用備援；如果雲端裡明確存了一個空陣列
+  // （理論上不該發生，因為「刪除旅伴」已經擋掉刪到剩 0 個），也絕對不能默默改顯示成寫死的假旅伴，
+  // 那樣等於是無聲蓋掉真實資料，寧可讓畫面留空、之後可以再手動補回來。
+  const collaborators = trip.collaborators
     ? trip.collaborators
     : (legacyCollaborators && legacyCollaborators.length ? legacyCollaborators : defaultCollaborators());
   return {
@@ -747,6 +750,11 @@ const actions = {
     render();
   },
   removeCollaborator(id) {
+    if (state.collaborators.length <= 1) {
+      window.alert("至少要留一位旅伴，沒辦法刪到剩 0 個人。");
+      return;
+    }
+    if (!window.confirm(`確定要移除「${(state.collaborators.find(p => p.id === id) || {}).name || ""}」嗎？`)) return;
     state.collaborators = state.collaborators.filter(p => p.id !== id);
     if (state.currentUserId === id) state.currentUserId = state.collaborators[0] ? state.collaborators[0].id : null;
     saveCollaborators();
@@ -1695,7 +1703,7 @@ function renderPersonalChecklistCard(title, section, gridArea) {
   /* 待辦（私人）現在是完全自由的筆記區：沒有公版、沒有分類，旅伴想記什麼就自己新增 */
   if (!isPacking) {
     const rows = myItems.map(c => renderChecklistRow(c, editMode, canEditMine, section)).join("");
-    return `<div style="background:var(--color-bg);border:1.5px solid var(--color-accent-300);border-radius:var(--radius-lg);padding:var(--space-4)">
+    return `<div class="card card-bordered" style="margin-top:var(--space-3)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px">
           <div class="card-title" style="font-size:16px">${esc(title)}</div>
           ${canEditMine ? `<div class="btn btn-icon btn-ghost" data-act="toggleChecklistEditMode" data-section="${section}" title="${editMode ? "完成編輯" : "編輯這份清單"}" style="color:${editMode ? "var(--color-accent)" : "inherit"}">${editMode ? '<i data-lucide="check" style="width:16px;height:16px"></i>' : '<i data-lucide="pencil" style="width:15px;height:15px"></i>'}</div>` : ""}
@@ -1835,11 +1843,11 @@ function renderSharedTodoCard(trip) {
   }).join("");
 
   const tabBar = `<div style="display:flex;gap:4px;flex:none">
-      <div class="tab-pill" data-act="setSharedTodoTab" data-tab="group" style="padding:5px 12px;font-size:11.5px;background:${tab === "group" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "group" ? "var(--color-bg)" : "var(--color-text)"}">主揪統籌</div>
+      <div class="tab-pill" data-act="setSharedTodoTab" data-tab="group" style="padding:5px 12px;font-size:11.5px;background:${tab === "group" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "group" ? "var(--color-bg)" : "var(--color-text)"}">團體</div>
       <div class="tab-pill" data-act="setSharedTodoTab" data-tab="personal" style="padding:5px 12px;font-size:11.5px;background:${tab === "personal" ? "var(--color-accent)" : "var(--color-surface)"};color:${tab === "personal" ? "var(--color-bg)" : "var(--color-text)"}">個人</div>
     </div>`;
 
-  return `<div style="background:var(--color-bg);border:1.5px solid var(--color-accent-300);border-radius:var(--radius-lg);padding:var(--space-4);margin-bottom:var(--space-3)">
+  return `<div class="card card-bordered" style="margin-top:var(--space-4);margin-bottom:var(--space-3)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
           <div class="card-title" style="font-size:16px">全體進度</div>
