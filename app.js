@@ -1915,7 +1915,7 @@ function renderItinerary(trip, day) {
     const weekday = tripStart ? formatWeekday(addDays(tripStart, d.index - 1)) : "";
     return `<div class="day-chip" data-act="selectDay" data-id="${d.id}" style="background:${active ? "var(--color-accent)" : "var(--color-surface)"};color:${active ? "var(--color-bg)" : "var(--color-text)"}">
         <div style="font-size:10.5px;opacity:.75">Day ${d.index}</div>
-        <div style="font-size:13px;font-weight:700">${esc(d.dateLabel)}${weekday ? `<span style="font-size:11px;font-weight:400;opacity:.8"> 週${weekday}</span>` : ""}</div>
+        <div style="font-size:13px;font-weight:700">${esc(d.dateLabel)}${weekday ? `<span style="font-size:11px;font-weight:400;opacity:.8">（${weekday}）</span>` : ""}</div>
         ${d.title ? `<div style="font-size:10px;opacity:.85;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.title)}</div>` : ""}
       </div>`;
   }).join("");
