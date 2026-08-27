@@ -1949,7 +1949,7 @@ function renderItinerary(trip, day) {
           ${it.locationUrl ? `<a href="${esc(it.locationUrl)}" target="_blank" rel="noopener" title="在 Google 地圖開啟"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg></a>` : ""}
         </div>
         ${it.alert ? `<div style="font-size:12.5px;line-height:1.7;font-weight:600;color:var(--color-danger,#c0392b);margin-top:6px;margin-left:40px">⚠️ ${esc(it.alert)}</div>` : ""}
-        ${it.note ? `<div style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px">${esc(it.note)}</div>` : ""}
+        ${it.note ? `<div style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px;white-space:pre-wrap;word-break:break-word">${esc(it.note)}</div>` : ""}
         ${it.docs && it.docs.length ? `<div data-act="openDocGallery" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="paperclip" style="width:12px;height:12px"></i> 行程資料（${it.docs.length}）</div>` : ""}
         ${canEdit && trip.days.length > 1 ? `<div data-act="openMoveItemModal" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="calendar-days" style="width:12px;height:12px"></i> 移到別天</div>` : ""}
       ` : "";
@@ -2225,7 +2225,7 @@ function renderModals(trip) {
           <div id="f-location-status" style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">${u.formLocationUrl ? "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟" : ""}</div>
         </div>
         <div class="field"><label style="color:var(--color-danger,#c0392b)">重要提醒</label><input class="input" id="f-alert" value="${esc(u.formAlert)}" placeholder="例：需事先預約、記得帶護照" style="color:var(--color-danger,#c0392b)" /></div>
-        <div class="field"><label>備註</label><input class="input" id="f-note" value="${esc(u.formNote)}" placeholder="提醒事項、預算等" /></div>
+        <div class="field"><label>備註</label><textarea class="input" id="f-note" rows="3" placeholder="提醒事項、預算等" style="resize:vertical;line-height:1.6;min-height:70px">${esc(u.formNote)}</textarea></div>
         <div class="field">
           <label>行程資料</label>
           <div style="display:flex;flex-wrap:wrap;gap:8px">
