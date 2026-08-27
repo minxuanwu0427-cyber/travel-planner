@@ -216,7 +216,9 @@ async function resolveGoogleMapsShortLink(url) {
     if (!titleMatch) return null;
     let title = titleMatch[1].trim();
     title = title.replace(/\s*[-·|]\s*Google\s*(地圖|Maps).*$/i, "").trim();
-    return title || null;
+    // 短網址沒能解析出實際地標，網頁標題退回泛用的「Google 地圖」字樣本身 —— 這不是真正的地點名稱，視為解析失敗，讓使用者自己輸入
+    if (!title || /^google\s*(地圖|maps)$/i.test(title)) return null;
+    return title;
   } catch (e) {
     return null;
   }
@@ -1334,10 +1336,12 @@ const actions = {
   },
 
   setImage(slotId, dataUrl) {
+    if (!canEditGeneral()) return;
     state.images[slotId] = dataUrl; render();
     db.collection("trips").doc(state.activeTripId).collection("images").doc(slotId).set({ data: dataUrl }).catch(err => console.error("照片同步失敗", err));
   },
   removeImage(slotId) {
+    if (!canEditGeneral()) return;
     delete state.images[slotId]; render();
     db.collection("trips").doc(state.activeTripId).collection("images").doc(slotId).delete().catch(err => console.error("刪除照片失敗", err));
   }
@@ -1380,18 +1384,21 @@ function imageSlot(id, placeholder, opts) {
   const fitAttr = opts.fit === "contain" ? ' data-fit="contain"' : "";
   const compact = !!opts.compact;
   const compactIconSize = opts.compactIconSize || 16;
+  const readOnly = !!opts.readOnly;
   const inner = src
     ? `<img src="${src}" alt="">`
     : compact
       ? `<div class="slot-placeholder" style="padding:0;gap:0"><svg width="${compactIconSize}" height="${compactIconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></div>`
       : `<div class="slot-placeholder"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg><span>${esc(placeholder)}</span></div>`;
-  const actionsHtml = src
+  const actionsHtml = (src && !readOnly)
     ? `<div class="slot-actions">
         <div class="btn btn-icon" data-act="pickImage" data-slot="${id}" title="更換照片"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
         <div class="btn btn-icon" data-act="removeImage" data-slot="${id}" title="移除照片"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
       </div>`
     : "";
-  return `<div class="image-slot ${src ? "" : "washed"} ${compact ? "image-slot-compact" : ""}" data-act="${src ? 'openLightbox' : 'pickImage'}" data-slot="${id}" style="${shapeClass};${style}"${fitAttr}>${inner}${actionsHtml}</div>`;
+  // 檢視模式（唯讀）下：有照片只能點開大圖看，沒有照片就完全不能互動，避免誤觸上傳/更換/刪除
+  const clickAct = src ? "openLightbox" : (readOnly ? "" : "pickImage");
+  return `<div class="image-slot ${src ? "" : "washed"} ${compact ? "image-slot-compact" : ""}" ${clickAct ? `data-act="${clickAct}"` : ""} data-slot="${id}" style="${shapeClass};${style}${readOnly && !src ? ";cursor:default" : ""}"${fitAttr}>${inner}${actionsHtml}</div>`;
 }
 
 function avatar(initial, color, size) {
@@ -1496,7 +1503,7 @@ function renderCover(trip) {
   }
   return `
   <div class="cover-wrap">
-    ${imageSlot("cover-" + trip.id, "行程封面照片", { style: "width:100%;height:100%;position:absolute;inset:0" })}
+    ${imageSlot("cover-" + trip.id, "行程封面照片", { style: "width:100%;height:100%;position:absolute;inset:0", readOnly: !canEdit })}
     <div class="cover-gradient"></div>
     <div class="cover-info">
       <h6>${esc(trip.country)}</h6>
@@ -1521,7 +1528,7 @@ function renderDocumentsCard(trip) {
   const canManage = isPrimaryEditor();
   const items = trip.documents || [];
   const rows = items.map(d => {
-    const photoDisplay = imageSlot("doc-" + d.id, "上傳圖片", { style: "width:100%;height:90px", radius: 6 });
+    const photoDisplay = imageSlot("doc-" + d.id, "上傳圖片", { style: "width:100%;height:90px", radius: 6, readOnly: !canEdit });
     const noteKey = "docnote:" + d.id;
     const noteExpanded = !!state.ui.expandedGroups[noteKey];
     return `<div class="card card-bordered" style="padding:var(--space-3);gap:6px">
@@ -1574,7 +1581,7 @@ function renderOverview(trip) {
           <i data-lucide="route" style="width:17px;height:17px;color:var(--color-accent)"></i>
           <div class="card-title" style="font-size:16px">旅行路線</div>
         </div>
-        ${imageSlot("route-map-" + trip.id, "上傳旅行路線地圖照片", { style: "width:100%;height:200px", radius: 8, fit: "contain" })}
+        ${imageSlot("route-map-" + trip.id, "上傳旅行路線地圖照片", { style: "width:100%;height:200px", radius: 8, fit: "contain", readOnly: !canEdit })}
     </div>
     <div class="card card-bordered" style="grid-area:stay">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -1957,7 +1964,7 @@ function renderItinerary(trip, day) {
         ${canEdit && trip.days.length > 1 ? `<div data-act="openMoveItemModal" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="calendar-days" style="width:12px;height:12px"></i> 移到別天</div>` : ""}
       ` : "";
       const thumbSize = canEdit ? 52 : 88;
-      const thumb = imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24 });
+      const thumb = imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24, readOnly: !canEdit });
       return `
       <div data-item-row="${it.id}" style="flex:1;min-width:240px">
         <div class="card item-card ${it.isBackup ? "backup" : "normal"}" style="opacity:${state.ui.draggingItemId === it.id ? 0.5 : 1}">
@@ -2225,7 +2232,7 @@ function renderModals(trip) {
         <div class="field">
           <label>地點</label>
           <input class="input" id="f-location" value="${esc(u.formLocation)}" placeholder="例：那霸市，或貼上 Google 地圖網址自動取名" />
-          <div id="f-location-status" style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">${u.formLocationUrl ? "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟" : ""}</div>
+          <div id="f-location-status" style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">${u.formLocationUrl ? "✓ 已連結 Google 地圖，這裡的文字可自行改成想要顯示的名稱，仍會保留連結" : ""}</div>
         </div>
         <div class="field"><label style="color:var(--color-danger,#c0392b)">重要提醒</label><input class="input" id="f-alert" value="${esc(u.formAlert)}" placeholder="例：需事先預約、記得帶護照" style="color:var(--color-danger,#c0392b)" /></div>
         <div class="field"><label>備註</label><textarea class="input" id="f-note" rows="3" placeholder="提醒事項、預算等" style="resize:vertical;line-height:1.6;min-height:70px">${esc(u.formNote)}</textarea></div>
@@ -2753,6 +2760,7 @@ function initEvents() {
 }
 
 function openImagePicker(slotId) {
+  if (!canEditGeneral()) return;
   const fileInput = document.getElementById("hidden-file-input");
   fileInput.setAttribute("data-current-slot", slotId);
   fileInput.click();
@@ -2835,7 +2843,7 @@ async function handleLocationFieldBlur(el) {
     el.value = parsed.name;
     state.ui.formLocation = parsed.name;
     state.ui.formLocationUrl = parsed.url;
-    if (statusEl) statusEl.textContent = "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟";
+    if (statusEl) statusEl.textContent = "✓ 已連結 Google 地圖，這裡的文字可自行改成想要顯示的名稱，仍會保留連結";
     return;
   }
   if (parsed.url && !parsed.name) {
@@ -2849,7 +2857,7 @@ async function handleLocationFieldBlur(el) {
     if (resolved) {
       if (elNow) elNow.value = resolved;
       state.ui.formLocation = resolved;
-      if (statusNow) statusNow.textContent = "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟";
+      if (statusNow) statusNow.textContent = "✓ 已連結 Google 地圖，這裡的文字可自行改成想要顯示的名稱，仍會保留連結";
     } else {
       if (elNow) elNow.value = "";
       state.ui.formLocation = "";
@@ -2859,7 +2867,7 @@ async function handleLocationFieldBlur(el) {
   }
   // 純文字，不是網址
   state.ui.formLocation = raw;
-  if (statusEl) statusEl.textContent = state.ui.formLocationUrl ? "✓ 已連結 Google 地圖，儲存後點地點名稱可直接開啟" : "";
+  if (statusEl) statusEl.textContent = state.ui.formLocationUrl ? "✓ 已連結 Google 地圖，這裡的文字可自行改成想要顯示的名稱，仍會保留連結" : "";
 }
 /* 新增/編輯行程項目的表單裡，只要跳出「新增行程資料」這種會整個重繪 modal 的動作，
    就要先把目前已經打在欄位裡但還沒觸發 blur 的文字同步進 state，不然重繪時會被清空 */
