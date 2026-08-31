@@ -1379,14 +1379,18 @@ function handleImageFile(slotId, file) {
 function imageSlot(id, placeholder, opts) {
   opts = opts || {};
   const src = state.images[id];
-  const style = opts.style || "";
+  let style = opts.style || "";
   const shapeClass = opts.circle ? "border-radius:50%" : `border-radius:${opts.radius != null ? opts.radius : 0}px`;
   const fitAttr = opts.fit === "contain" ? ' data-fit="contain"' : "";
   const compact = !!opts.compact;
   const compactIconSize = opts.compactIconSize || 16;
   const readOnly = !!opts.readOnly;
+  // fitToWidth：有照片時捨棄固定高度，改用照片本身比例撐開，寬度撐滿、不裁切也不留白邊；沒照片時維持原本固定高度的上傳提示框
+  const fitToWidth = !!opts.fitToWidth;
+  if (fitToWidth && src) style += ";height:auto";
+  const imgExtraStyle = (fitToWidth && src) ? ' style="display:block;width:100%;height:auto"' : "";
   const inner = src
-    ? `<img src="${src}" alt="">`
+    ? `<img src="${src}" alt=""${imgExtraStyle}>`
     : compact
       ? `<div class="slot-placeholder" style="padding:0;gap:0"><svg width="${compactIconSize}" height="${compactIconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></div>`
       : `<div class="slot-placeholder"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg><span>${esc(placeholder)}</span></div>`;
@@ -1581,7 +1585,7 @@ function renderOverview(trip) {
           <i data-lucide="route" style="width:17px;height:17px;color:var(--color-accent)"></i>
           <div class="card-title" style="font-size:16px">旅行路線</div>
         </div>
-        ${imageSlot("route-map-" + trip.id, "上傳旅行路線地圖照片", { style: "width:100%;height:200px", radius: 8, fit: "contain", readOnly: !canEdit })}
+        ${imageSlot("route-map-" + trip.id, "上傳旅行路線地圖照片", { style: "width:100%;height:200px", radius: 8, fitToWidth: true, readOnly: !canEdit })}
     </div>
     <div class="card card-bordered" style="grid-area:stay">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
