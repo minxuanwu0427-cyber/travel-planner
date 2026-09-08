@@ -178,7 +178,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .item-card { border-radius: var(--radius-lg); flex-direction: row; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
 .item-card.backup { border: 1px dashed var(--color-divider); background: var(--color-surface); box-shadow: none; }
 .item-card.normal { border: 1px solid var(--color-divider); background: var(--color-bg); box-shadow: var(--shadow-sm); }
-.item-card.transit { border: 1px solid oklch(85% 0.04 250); background: oklch(98.5% 0.012 250); box-shadow: var(--shadow-sm); }
+.item-card.transit { border: none; background: transparent; box-shadow: none; padding-left: 0; padding-right: 0; }
 .drag-handle { cursor: grab; display: flex; align-items: center; flex: none; margin-top: 6px; touch-action: none; }
 .drag-handle:active { cursor: grabbing; }
 
