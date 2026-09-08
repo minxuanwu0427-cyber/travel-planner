@@ -1965,10 +1965,10 @@ function renderItinerary(trip, day) {
         </div>
       ` : "";
       const extraBlock = isExpanded ? `
-        ${it.alert ? `<div style="font-size:12.5px;line-height:1.7;font-weight:600;color:var(--color-danger,#c0392b);margin-top:6px;margin-left:40px">⚠️ ${esc(it.alert)}</div>` : ""}
-        ${it.note ? `<div style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px;white-space:pre-wrap;word-break:break-word">${esc(it.note)}</div>` : ""}
-        ${it.docs && it.docs.length ? `<div data-act="openDocGallery" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="paperclip" style="width:12px;height:12px"></i> 行程資料（${it.docs.length}）</div>` : ""}
-        ${canEdit && trip.days.length > 1 ? `<div data-act="openMoveItemModal" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="calendar-days" style="width:12px;height:12px"></i> 移到別天</div>` : ""}
+        ${it.alert ? `<div style="font-size:12.5px;line-height:1.7;font-weight:600;color:var(--color-danger,#c0392b);margin-top:6px;margin-left:${isTransit ? 0 : 40}px">⚠️ ${esc(it.alert)}</div>` : ""}
+        ${it.note ? `<div style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:${isTransit ? 0 : 40}px;white-space:pre-wrap;word-break:break-word">${esc(it.note)}</div>` : ""}
+        ${it.docs && it.docs.length ? `<div data-act="openDocGallery" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:${isTransit ? 0 : 40}px;display:flex;align-items:center;gap:4px"><i data-lucide="paperclip" style="width:12px;height:12px"></i> 行程資料（${it.docs.length}）</div>` : ""}
+        ${canEdit && trip.days.length > 1 ? `<div data-act="openMoveItemModal" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:${isTransit ? 0 : 40}px;display:flex;align-items:center;gap:4px"><i data-lucide="calendar-days" style="width:12px;height:12px"></i> 移到別天</div>` : ""}
       ` : "";
       const thumbSize = canEdit ? 52 : 88;
       const thumb = isTransit ? "" : imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24, readOnly: !canEdit });
@@ -1977,17 +1977,18 @@ function renderItinerary(trip, day) {
         <div class="card item-card ${it.isBackup ? "backup" : (isTransit ? "transit" : "normal")}" style="opacity:${state.ui.draggingItemId === it.id ? 0.5 : 1}">
           ${itemCanDrag ? `<div class="drag-handle" data-drag-handle="${it.id}"><i data-lucide="grip-vertical" style="width:16px;height:16px;opacity:.45"></i></div>` : ""}
           <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
               <div style="flex-shrink:0;white-space:nowrap;font-size:11px;font-weight:700;text-decoration:underline;color:${meta.tagFg}">${esc(it.category)}</div>
               <div style="font-size:12.5px;color:var(--color-accent-700)">${esc(it.time)}</div>
+              ${isTransit ? `<div style="font-size:15.5px;font-weight:700;font-family:var(--font-body)">${esc(it.title)}</div>` : ""}
               ${it.isBackup ? `<div style="font-size:10.5px;font-weight:700;opacity:.55;letter-spacing:.04em">備案</div>` : ""}
             </div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            ${!isTransit ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               <div style="width:32px;height:32px;border-radius:50%;background:${meta.tagBg};display:flex;align-items:center;justify-content:center;flex:none">
                 ${categoryIconSvg(meta.icon, 16, meta.tagFg)}
               </div>
               <div style="font-size:15.5px;font-weight:700;font-family:var(--font-body);flex:1;min-width:80px">${esc(it.title)}</div>
-            </div>
+            </div>` : ""}
             ${locationBlock}
             ${extraBlock}
             ${!isTransit ? `<div data-act="toggleItemExpanded" data-id="${it.id}" style="cursor:pointer;display:flex;align-items:center;gap:3px;margin-left:40px;margin-top:6px;font-size:11.5px;color:var(--color-accent-700);opacity:.85">
