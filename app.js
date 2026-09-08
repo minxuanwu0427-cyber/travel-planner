@@ -1950,18 +1950,21 @@ function renderItinerary(trip, day) {
     const showDot = !grp.items.every(it => it.isBackup);
     const itemsHtml = grp.items.map(it => {
       const meta = CATEGORY_META[it.category] || CATEGORY_META["其他"];
-      const isExpanded = state.ui.expandedItemIds.includes(it.id);
+      const isTransit = it.category === "交通";
+      const isExpanded = isTransit ? true : state.ui.expandedItemIds.includes(it.id);
       const locationDisplay = it.location
         ? (it.locationUrl
             ? `<a href="${esc(it.locationUrl)}" target="_blank" rel="noopener" style="font-size:12.5px;color:var(--color-accent-700);text-decoration:underline">${esc(it.location)}</a>`
             : `<span style="font-size:12.5px;color:var(--color-text);opacity:.8">${esc(it.location)}</span>`)
         : `<span style="font-size:12.5px;opacity:.4">尚未設定地點</span>`;
-      const locationBlock = isExpanded ? `
+      const locationBlock = (isExpanded && !isTransit) ? `
         <div style="display:flex;align-items:center;gap:5px;margin-top:2px;margin-left:40px">
           <span style="font-size:12px">📌</span>
           ${locationDisplay}
           ${it.locationUrl ? `<a href="${esc(it.locationUrl)}" target="_blank" rel="noopener" title="在 Google 地圖開啟"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg></a>` : ""}
         </div>
+      ` : "";
+      const extraBlock = isExpanded ? `
         ${it.alert ? `<div style="font-size:12.5px;line-height:1.7;font-weight:600;color:var(--color-danger,#c0392b);margin-top:6px;margin-left:40px">⚠️ ${esc(it.alert)}</div>` : ""}
         ${it.note ? `<div style="font-size:12.5px;line-height:1.7;opacity:.75;margin-top:6px;margin-left:40px;white-space:pre-wrap;word-break:break-word">${esc(it.note)}</div>` : ""}
         ${it.docs && it.docs.length ? `<div data-act="openDocGallery" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="paperclip" style="width:12px;height:12px"></i> 行程資料（${it.docs.length}）</div>` : ""}
@@ -1971,7 +1974,7 @@ function renderItinerary(trip, day) {
       const thumb = imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24, readOnly: !canEdit });
       return `
       <div data-item-row="${it.id}" style="flex:1;min-width:240px">
-        <div class="card item-card ${it.isBackup ? "backup" : "normal"}" style="opacity:${state.ui.draggingItemId === it.id ? 0.5 : 1}">
+        <div class="card item-card ${it.isBackup ? "backup" : (isTransit ? "transit" : "normal")}" style="opacity:${state.ui.draggingItemId === it.id ? 0.5 : 1}">
           ${itemCanDrag ? `<div class="drag-handle" data-drag-handle="${it.id}"><i data-lucide="grip-vertical" style="width:16px;height:16px;opacity:.45"></i></div>` : ""}
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -1986,9 +1989,10 @@ function renderItinerary(trip, day) {
               <div style="font-size:15.5px;font-weight:700;font-family:var(--font-body);flex:1;min-width:80px">${esc(it.title)}</div>
             </div>
             ${locationBlock}
-            <div data-act="toggleItemExpanded" data-id="${it.id}" style="cursor:pointer;display:flex;align-items:center;gap:3px;margin-left:40px;margin-top:6px;font-size:11.5px;color:var(--color-accent-700);opacity:.85">
+            ${extraBlock}
+            ${!isTransit ? `<div data-act="toggleItemExpanded" data-id="${it.id}" style="cursor:pointer;display:flex;align-items:center;gap:3px;margin-left:40px;margin-top:6px;font-size:11.5px;color:var(--color-accent-700);opacity:.85">
               ${isExpanded ? "收合" : "詳細行程"} <i data-lucide="${isExpanded ? "chevron-up" : "chevron-down"}" style="width:12px;height:12px"></i>
-            </div>
+            </div>` : ""}
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex:none">
             ${canEdit ? `<div style="display:flex;flex-direction:column;gap:4px">
