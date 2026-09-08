@@ -1971,7 +1971,7 @@ function renderItinerary(trip, day) {
         ${canEdit && trip.days.length > 1 ? `<div data-act="openMoveItemModal" data-id="${it.id}" style="cursor:pointer;font-size:12.5px;color:var(--color-accent-700);text-decoration:underline;margin-top:6px;margin-left:40px;display:flex;align-items:center;gap:4px"><i data-lucide="calendar-days" style="width:12px;height:12px"></i> 移到別天</div>` : ""}
       ` : "";
       const thumbSize = canEdit ? 52 : 88;
-      const thumb = imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24, readOnly: !canEdit });
+      const thumb = isTransit ? "" : imageSlot("item-photo-" + it.id, "", { style: `width:${thumbSize}px;height:${thumbSize}px`, radius: 8, compact: true, compactIconSize: canEdit ? 16 : 24, readOnly: !canEdit });
       return `
       <div data-item-row="${it.id}" style="flex:1;min-width:240px">
         <div class="card item-card ${it.isBackup ? "backup" : (isTransit ? "transit" : "normal")}" style="opacity:${state.ui.draggingItemId === it.id ? 0.5 : 1}">
