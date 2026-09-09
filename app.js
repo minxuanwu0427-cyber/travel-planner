@@ -977,7 +977,7 @@ const actions = {
     if (!isPrimaryEditor()) return;
     const title = (window.prompt("新增資料標題（例如：機票 QRCode、eSIM 設定）") || "").trim();
     if (!title) return;
-    mutateTrip(t => ({ ...t, documents: [...(t.documents || []), { id: uid("doc"), title, note: "" }] }));
+    mutateTrip(t => ({ ...t, documents: [...(t.documents || []), { id: uid("doc"), title, note: "", url: "" }] }));
     render();
   },
   removeDocument(id) {
@@ -993,6 +993,11 @@ const actions = {
   setDocumentNote(id, val) {
     if (!canEditGeneral()) return;
     mutateTrip(t => ({ ...t, documents: t.documents.map(d => d.id === id ? { ...d, note: val } : d) }));
+    render();
+  },
+  setDocumentUrl(id, val) {
+    if (!canEditGeneral()) return;
+    mutateTrip(t => ({ ...t, documents: t.documents.map(d => d.id === id ? { ...d, url: val } : d) }));
     render();
   },
   setNotes(val) { if (!canEditGeneral()) return; mutateTrip(t => ({ ...t, notes: val })); render(true); },
@@ -1539,10 +1544,12 @@ function renderDocumentsCard(trip) {
         ${photoDisplay}
         <div style="display:flex;align-items:center;gap:4px">
           <input class="input input-plain" data-bind-blur="documentTitle" data-id="${d.id}" value="${esc(d.title)}" ${canEdit ? "" : "readonly"} style="font-size:13.5px;font-weight:700;flex:1" />
+          ${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener" title="開啟連結" style="flex:none;color:var(--color-accent-700);padding:2px;display:flex"><i data-lucide="external-link" style="width:14px;height:14px"></i></a>` : ""}
           <div data-act="toggleGroupCollapse" data-id="${esc(noteKey)}" title="${noteExpanded ? "收合說明" : "展開說明"}" style="cursor:pointer;flex:none;color:var(--color-neutral-500);padding:2px"><i data-lucide="${noteExpanded ? "chevron-up" : "chevron-down"}" style="width:14px;height:14px"></i></div>
         </div>
         ${noteExpanded
-          ? `<textarea class="input input-plain" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 1)}" style="font-size:12px;line-height:1.6;height:auto;opacity:.8" placeholder="補充說明">${esc(d.note)}</textarea>`
+          ? `<input class="input input-plain" data-bind-blur="documentUrl" data-id="${d.id}" value="${esc(d.url || "")}" ${canEdit ? "" : "readonly"} placeholder="貼上網址（選填，例如訂票連結）" style="font-size:12px;opacity:.85" />
+             <textarea class="input input-plain" data-bind-blur="documentNote" data-id="${d.id}" ${canEdit ? "" : "readonly"} rows="${estimateTextareaRows(d.note, 1)}" style="font-size:12px;line-height:1.6;height:auto;opacity:.8" placeholder="補充說明">${esc(d.note)}</textarea>`
           : ""}
         ${canManage ? `<div style="display:flex;justify-content:flex-end"><div class="btn btn-icon btn-ghost" data-act="removeDocument" data-id="${d.id}"><i data-lucide="trash-2" style="width:13px;height:13px"></i></div></div>` : ""}
       </div>`;
@@ -2926,6 +2933,7 @@ function handleFieldCommit(e) {
     case "sharedTodoLabel": actions.setSharedTodoLabel(el.getAttribute("data-cat"), id, val); break;
     case "documentTitle": actions.setDocumentTitle(id, val); break;
     case "documentNote": actions.setDocumentNote(id, val); break;
+    case "documentUrl": actions.setDocumentUrl(id, val); break;
     case "memoTagName": actions.saveMemoTag(id, val); break;
       case "dayTitle": actions.setDayTitle(state.activeDayId, val); break;
     case "budgetLabel": actions.setBudgetLabel(id, val); break;
