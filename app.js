@@ -1590,9 +1590,9 @@ function renderOverview(trip) {
     <div class="card card-bordered" style="grid-area:route">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
           <i data-lucide="route" style="width:17px;height:17px;color:var(--color-accent)"></i>
-          <div class="card-title" style="font-size:16px">旅行路線</div>
+          <div class="card-title" style="font-size:16px">文化指南</div>
         </div>
-        ${imageSlot("route-map-" + trip.id, "上傳旅行路線地圖照片", { style: "width:100%;height:200px", radius: 8, fitToWidth: true, readOnly: !canEdit })}
+        ${imageSlot("route-map-" + trip.id, "上傳文化指南照片", { style: "width:100%;height:200px", radius: 8, fitToWidth: true, readOnly: !canEdit })}
     </div>
     <div class="card card-bordered" style="grid-area:stay">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
