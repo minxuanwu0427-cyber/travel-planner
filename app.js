@@ -2520,6 +2520,14 @@ function doRender() {
     }
   }
 
+  // 日期橫條／分類標籤列是橫向捲動的，整頁 innerHTML 重繪後新節點的捲動位置會歸零（跳回最左邊），
+  // 所以先記住目前的捲動位置，重繪完再還原
+  const scrollRowSelectors = [".chip-row", ".tag-scroll-row"];
+  const savedRowScroll = scrollRowSelectors.map(sel => {
+    const el = root.querySelector(sel);
+    return el ? el.scrollLeft : null;
+  });
+
   const trip = findTrip();
   const day = findDay();
   let sectionHtml = "";
@@ -2543,6 +2551,11 @@ function doRender() {
   root.innerHTML = html;
   suppressBlurCommit = false;
   refreshIcons();
+  scrollRowSelectors.forEach((sel, i) => {
+    if (savedRowScroll[i] == null) return;
+    const el = root.querySelector(sel);
+    if (el) el.scrollLeft = savedRowScroll[i];
+  });
 
   if (focusInfo) {
     try {
