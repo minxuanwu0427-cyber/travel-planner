@@ -12,6 +12,7 @@ const CATEGORY_META = {
   "餐飲": { icon: "utensils", tagBg: "oklch(92% 0.07 95)", tagFg: "oklch(42% 0.11 95)" },
   "購物": { icon: "shopping-bag", tagBg: "oklch(92% 0.05 305)", tagFg: "oklch(42% 0.13 305)" },
   "住宿": { icon: "bed", tagBg: "oklch(92% 0.05 145)", tagFg: "oklch(40% 0.1 145)" },
+  "休息": { icon: "coffee", tagBg: "oklch(92% 0.05 55)", tagFg: "oklch(42% 0.1 55)" },
   "其他": { icon: "circle", tagBg: "var(--color-neutral-200)", tagFg: "var(--color-neutral-700)" }
 };
 /* 這幾個分類的圖示直接內嵌 SVG 路徑（不透過 lucide.createIcons() 動態產生）。
@@ -23,13 +24,14 @@ const CATEGORY_ICON_SVG = {
   utensils: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
   "shopping-bag": '<path d="M16 10a4 4 0 0 1-8 0"/><path d="M3.103 6.034h17.794"/><path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"/>',
   bed: '<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>',
+  coffee: '<path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/>',
   circle: '<circle cx="12" cy="12" r="10"/>'
 };
 function categoryIconSvg(iconName, size, color) {
   const inner = CATEGORY_ICON_SVG[iconName] || CATEGORY_ICON_SVG.circle;
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 }
-const CATEGORY_OPTIONS = ["交通", "景點", "餐飲", "購物", "住宿", "其他"];
+const CATEGORY_OPTIONS = ["交通", "景點", "餐飲", "購物", "住宿", "休息", "其他"];
 const BUDGET_CATS = ["個人", "票券", "交通", "住宿", "其他"];
 const PREP_CATS = ["票券", "保險&金融相關", "其他"];
 const PACKING_CATS = ["重要物品", "3C", "衣物", "個人用品", "藥品", "其他"];
